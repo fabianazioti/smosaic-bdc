@@ -14,6 +14,9 @@ long_description = LONG_DESCRIPTION,
 setup(
     name='smosaic',
     packages=find_packages(),
+    package_data={
+        "smosaic": ["config/*.json", "config/*.geojson"],
+    },
     include_package_data=True,
     version = VERSION,
     description='Simple python package for creating satellite image mosaics based on Brazil Data Cube',

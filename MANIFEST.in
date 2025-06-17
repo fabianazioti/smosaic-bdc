@@ -20,6 +20,8 @@ exclude docs/sphinx/_build
 include *.py
 include *.rst
 include *.sh
+include smosaic/config/*.json
+include smosaic/config/*.geojson
 include LICENSE
 include VERSION
 recursive-include exemples *.py

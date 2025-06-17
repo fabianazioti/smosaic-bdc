@@ -4,6 +4,8 @@ import zipfile
 import pyproj
 from tqdm import tqdm
 from pystac_client import Client
+from importlib.resources import files
+import json
 
 cloud_dict = {
     'S2-16D-2':{
@@ -36,6 +38,10 @@ coverage_proj = pyproj.CRS.from_wkt('''
         AXIS["Northing",NORTH]]''')
 
 stac = Client.open("https://data.inpe.br/bdc/stac/v1")
+
+def load_json():
+    json_path = files("smosaic.config") / "grids.json"
+    return json.loads(json_path.read_text(encoding="utf-8"))
 
 def collection_query(collection, start_date, end_date, tile=None, bbox=None, freq=None, bands=None):
     """An object that contains the information associated with a collection 
@@ -116,40 +122,52 @@ def unzip():
             os.remove(z)
 
 def collection_get_data(datacube):
-
+    
     collection = datacube['collection']
     bbox = datacube['bbox']
     start_date = datacube['start_date']
     end_date = datacube['end_date']
     bands = datacube['bands']
 
-    mgrs_tile = "data"
-    item_search = stac.search(
-        collections=[collection],
-        datetime=start_date+"T00:00:00Z/"+end_date+"T23:59:00Z",
-        bbox=bbox
-    )
-
-    if (datacube['tile']):
+    if (datacube['bbox']):
         item_search = stac.search(
             collections=[collection],
             datetime=start_date+"T00:00:00Z/"+end_date+"T23:59:00Z",
-            query={
-                "bdc:tile": {"eq": mgrs_tile},
-            }
+            bbox=bbox
         )
-
-    if not os.path.exists(collection+"/"+mgrs_tile):
-        os.makedirs(collection+"/"+mgrs_tile)
         
-    for band in bands:
-        if not os.path.exists(collection+"/"+mgrs_tile+"/"+band):
-            os.makedirs(collection+"/"+mgrs_tile+"/"+band)
+    tiles = []
+    for item in item_search.items():
+        if (collection=="AMZ1-WFI-L4-SR-1"):
+            tile = item.id.split("_")[4]+'_'+item.id.split("_")[5]
+            if tile not in tiles:
+                tiles.append(tile)
+                
+    for tile in tiles:      
+        if not os.path.exists(collection+"/"+tile):
+            os.makedirs(collection+"/"+tile)
+        for band in bands:
+            if not os.path.exists(collection+"/"+tile+"/"+band):
+                os.makedirs(collection+"/"+tile+"/"+band)
 
     for item in item_search.items():
         for band in bands:
+            tile = item.id.split("_")[4]+'_'+item.id.split("_")[5]
             response = requests.get(item.assets[band].href, stream=True)
-            if(os.path.exists(os.path.join(collection+"/"+mgrs_tile+"/"+band, os.path.basename(item.assets[band].href)))):
+            if(os.path.exists(os.path.join(collection+"/"+tile+"/"+band, os.path.basename(item.assets[band].href)))):
                 print(os.path.basename(item.assets[band].href)[:30]+'...', ': Already exists')
             else:
-                download_stream(os.path.join(collection+"/"+mgrs_tile+"/"+band, os.path.basename(item.assets[band].href)), response, total_size=item.to_dict()['assets'][band]["bdc:size"])
+                download_stream(os.path.join(collection+"/"+tile+"/"+band, os.path.basename(item.assets[band].href)), response, total_size=item.to_dict()['assets'][band]["bdc:size"])
+
+def mosaic(collection, output_dir, start_year, start_month, start_day, duration_months, bands, mosaic_method, geom=None, grid=None, grid_id=None):
+
+    #bdc_grids_data = load_json()
+    #selected_tile = ''
+    #for g in bdc_grids_data['grids']:
+    #    if (g['name'] == grid):
+    #        for tile in g['features']:
+    #            if tile['properties']['tile'] == grid_id:
+    #                selected_tile = tile
+    #geometry = selected_tile['properties']['geometry']
+    
+    print('Done!')
