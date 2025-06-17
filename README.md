@@ -1,1 +1,1 @@
-# simple-mosaic
+# smosaic
