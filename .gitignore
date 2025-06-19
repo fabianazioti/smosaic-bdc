@@ -50,6 +50,8 @@ coverage.xml
 .hypothesis/
 .pytest_cache/
 cover/
+notebooks/AMZ1-WFI-L4-SR-1
+notebooks/output
 
 # Translations
 *.mo
