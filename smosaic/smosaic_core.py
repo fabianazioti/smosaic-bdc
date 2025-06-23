@@ -116,8 +116,9 @@ def download_stream(file_path: str, response, chunk_size=1024*64, progress=True,
         total=total_size,
         unit="B",
         unit_scale=True,
-        disable=not progress,
-        initial=offset
+        #disable=not progress,
+        initial=offset,
+        disable=True
     )
 
     mode = 'a+b' if offset else 'wb'
@@ -127,7 +128,7 @@ def download_stream(file_path: str, response, chunk_size=1024*64, progress=True,
         with open(file_path, mode) as stream:
             for chunk in response.iter_content(chunk_size):
                 stream.write(chunk)
-                #progress_bar.update(chunk_size)
+                progress_bar.update(chunk_size)
 
     file_size = os.stat(file_path).st_size
 
@@ -205,7 +206,7 @@ def create_multipolygon(polygons, crs=None):
     gdf = gpd.GeoDataFrame(geometry=[multipoly], crs=crs)
     
     return gdf
-    
+
 def clip_raster(input_raster_path, output_folder, clip_geometry, output_filename=None):
     """
     Clip a raster using a Shapely geometry and save the result to another folder.
@@ -258,7 +259,7 @@ def clip_raster(input_raster_path, output_folder, clip_geometry, output_filename
     print(f"Clipped raster saved to: {output_path}")
     os.remove(input_raster_path)
     return output_path
-    
+
 def count_pixels_with_value(raster_path, target_value):
     """
     Counts the number of pixels in a raster that match a specific value.
@@ -279,7 +280,7 @@ def count_pixels_with_value(raster_path, target_value):
         count = (data == target_value).sum()
         
         return dict(total=data.size, count=count)
-    
+
 def get_dataset_extents(datasets):
     extents = []
     for ds in datasets:
@@ -464,44 +465,44 @@ def mosaic(data_dir, collection, output_dir, start_year, start_month, start_day,
     start_date = datetime.strptime(str(start_year)+'-'+str(start_month)+'-'+str(start_day), "%Y-%m-%d").strftime("%Y-%m-%d")
     end_date = str(add_months_to_date(start_date, duration_months-1).strftime('%Y-%m-%d'))
 
-    collection=collection_query(
-        collection="AMZ1-WFI-L4-SR-1",
+    dict_collection=collection_query(
+        collection=collection,
         start_date=start_date,
         end_date=end_date,
         bbox=bbox,
         bands=bands
     )   
 
-    collection_get_data(collection)
+    collection_get_data(dict_collection)
     
     if (mosaic_method=='lcf'):
         data_dir = os.path.join(data_dir+'/'+collection)
-       
+
         lcf_list = []
         
         for path in os.listdir(data_dir):
             scenes_list = []
             for file in os.listdir(os.path.join(data_dir, path, 'CMASK')):
                 pixel_count = count_pixels_with_value(os.path.join(data_dir, path, 'CMASK', file), 127)
+                #por região não total
                 scenes_list.append(dict(date=file.split("_")[3], clean_percentage=float(pixel_count['count']/pixel_count['total']), scene=path, file=''))
             for file in os.listdir(os.path.join(data_dir, path, bands[0])):
                 next((item.update(file=os.path.join(data_dir, path, bands[0], file)) for item in scenes_list if item['date'] == file.split("_")[3]), None)
             sorted_data = sorted(scenes_list, key=lambda x: x['clean_percentage'], reverse=True)
-            #print(sorted_data)
             lcf_list.append(sorted_data[0])
         
         tif_files = []
         for file in lcf_list:
             tif_files.append(file['file'])  
-            
+        
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
-        output_file = os.path.join(output_dir, "mosaic-amazonia-brazil-2m.tif")  
+        output_file = os.path.join(output_dir, "raw-mosaic-"+collection.split("-")[0].lower()+"-"+bands[0].lower()+"-brazil-"+str(duration_months)+"m.tif")  
         
         datasets = [rasterio.open(file) for file in tif_files]        
 
         extents = get_dataset_extents(datasets)
-        
+
         merge_tifs(tif_files, output_file, extents)
         
-        clipped_path = clip_raster(input_raster_path=output_file, output_folder=output_dir,clip_geometry=geom,output_filename="clipped_mosaic-amazonia-brazil-2m.tif")
+        clip_raster(input_raster_path=output_file, output_folder=output_dir,clip_geometry=geom,output_filename="mosaic-"+collection.split("-")[0].lower()+"-"+bands[0].lower()+"-brazil-"+str(duration_months)+"m.tif")
