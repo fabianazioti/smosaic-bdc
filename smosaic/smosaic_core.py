@@ -32,6 +32,12 @@ cloud_dict = {
         'cloud_band': 'SCL',
         'non_cloud_values': [4,5,6],
         'cloud_values': [0,1,2,3,7,8,9,10,11]
+    },
+    'AMZ1-WFI-L4-SR-1':{
+        'cloud_band': 'CMASK',
+        'non_cloud_values': [127],
+        'cloud_values': [255, 0],
+        'no_data_value': 0
     }
 }
 
@@ -153,7 +159,7 @@ def collection_get_data(datacube):
     bbox = datacube['bbox']
     start_date = datacube['start_date']
     end_date = datacube['end_date']
-    bands = datacube['bands']
+    bands = datacube['bands'] + [cloud_dict[collection]['cloud_band']]
 
     if (datacube['bbox']):
         item_search = stac.search(
@@ -176,15 +182,26 @@ def collection_get_data(datacube):
             if not os.path.exists(collection+"/"+tile+"/"+band):
                 os.makedirs(collection+"/"+tile+"/"+band)
 
+    geom_map = []
+    download = False
+
     for item in tqdm(desc='Downloading... ', unit=" itens", total=item_search.matched(), iterable=item_search.items()):
         for band in bands:
-            tile = item.id.split("_")[4]+'_'+item.id.split("_")[5]
+            if (collection=="AMZ1-WFI-L4-SR-1"):
+                tile = item.id.split("_")[4]+'_'+item.id.split("_")[5]
             response = requests.get(item.assets[band].href, stream=True)
+            if not any(tile_dict["tile"] == tile for tile_dict in geom_map):
+                geom_map.append(dict(tile=tile, geometry=item.geometry))
             if(os.path.exists(os.path.join(collection+"/"+tile+"/"+band, os.path.basename(item.assets[band].href)))):
-                #print(os.path.basename(item.assets[band].href)[:30]+'...', ': Already exists')
-                pass
+                download = False
             else:
+                download = True
                 download_stream(os.path.join(collection+"/"+tile+"/"+band, os.path.basename(item.assets[band].href)), response, total_size=item.to_dict()['assets'][band]["bdc:size"])
+    
+    if(download):
+        file_name = collection+".json"
+        with open(os.path.join(collection+"/"+file_name), 'w') as json_file:
+            json.dump(dict(collection=collection, geoms=geom_map), json_file, indent=4)
 
     print(f"Successfully download {item_search.matched()} files to {os.path.join(collection)}")
 
@@ -321,7 +338,7 @@ def add_months_to_date(start_date, months_to_add):
     
     return start_date + relativedelta(months=months_to_add)
 
-def merge_tifs(tif_files, output_path, extent=None):
+def merge_tifs(tif_files, output_path, band, extent=None):
     """
     Merge a list of TIFF files into one mosaic, reprojecting to EPSG:4326.
     
@@ -382,7 +399,14 @@ def merge_tifs(tif_files, output_path, extent=None):
             # Create a temporary file path
             temp_path = f'temp_{os.path.basename(tif)}'
             reprojected_files.append(temp_path)
-            
+
+            cloud_bands = [item['cloud_band'] for item in cloud_dict.values()]
+
+            if band in cloud_bands:
+                nodata = 0 
+            else:
+                nodata = -9999
+
             # Write the reprojected data to a temporary file
             with rasterio.open(
                 temp_path,
@@ -394,7 +418,7 @@ def merge_tifs(tif_files, output_path, extent=None):
                 dtype=reproj_data.dtype,
                 crs=dst_crs,
                 transform=dst_transform,
-                nodata=-9999
+                nodata= nodata
             ) as dst:
                 dst.write(reproj_data)
     
@@ -444,11 +468,116 @@ def merge_tifs(tif_files, output_path, extent=None):
     
     return output_path
 
-def filter_scenes(data_dir):
-    filtered_dir = data_dir
-    return filtered_dir
+def merge_scene(data_list, collection, bands, data_dir):
+    
+    merge_files = []
 
-def mosaic(data_dir, collection, output_dir, start_year, start_month, start_day, duration_months, bands, mosaic_method, geom=None, grid=None, grid_id=None):
+    cloud_sorted_data = [item for item in data_list if item.get("band") == "CMASK"]
+
+    scenes = [item["scene"] for item in cloud_sorted_data]
+
+    for band in bands:
+        band_data = [item for item in data_list if item.get("band") == band]
+        for scene in scenes:
+            scene_data = [item["data"] for item in band_data if item["scene"] == scene]
+            cloud_data = [item["data"] for item in cloud_sorted_data if item["scene"] == scene]
+            images =  [item['file'] for item in scene_data[0] if item.get("scene") == scene]
+            cloud_images = [item['file'] for item in cloud_data[0] if item.get("scene") == scene]
+            temp_images = []
+
+            for i in range(0, 4): #len(images)
+
+                try:
+                    with rasterio.open(images[i]) as src:
+                        image_data = src.read()  
+                        profile = src.profile  
+
+                    with rasterio.open(cloud_images[i]) as mask_src:
+                        cloud_mask = mask_src.read(1) 
+
+                    clear_mask = np.isin(cloud_mask, cloud_dict[collection]['non_cloud_values'])
+
+                    masked_image = np.full_like(image_data, profile['nodata']) 
+                    for band_idx in range(image_data.shape[0]):
+                        masked_image[band_idx, clear_mask] = image_data[band_idx, clear_mask]
+
+                    if 'nodata' not in profile:
+                        profile.update(nodata=-9999)  
+                    
+                    file_name = 'clear_'+images[i].split('/')[-1]
+
+                    temp_images.append(os.path.join(data_dir,file_name))
+                    with rasterio.open(os.path.join(data_dir,file_name), 'w', **profile) as dst:
+                        dst.write(masked_image)
+                except:
+                    pass
+
+            try:
+                output_file = os.path.join(data_dir, "merge_"+collection.split('-')[0]+"_"+scene+"_"+band+".tif")  
+
+                datasets = [rasterio.open(file) for file in temp_images]    
+
+                extents = get_dataset_extents(datasets)
+
+                merge_tifs(temp_images, output_file, band, extents)
+
+                merge_files.append(output_file)
+
+                for f in temp_images:
+                    try:
+                        os.remove(f)
+                    except:
+                        pass
+            except:
+                pass
+
+    return merge_files
+
+def geometry_collides_with_bbox(geometry,input_bbox):
+    """
+    Check if a Shapely geometry collides with a bounding box.
+    
+    Args:
+        geometry: A Shapely geometry object (Polygon, LineString, Point, etc.)
+        bbox: A tuple in (minx, miny, maxx, maxy) format
+        
+    Returns:
+        bool: True if the geometry intersects with the bbox, False otherwise
+    """
+    # Create a Polygon from the bbox
+    bbox_polygon = box(*input_bbox)
+    
+    # Check for intersection
+    return geometry.intersects(bbox_polygon)
+
+def filter_scenes(collection, data_dir, bbox):
+    """
+    Return scenes from data_dir where the geometry collides with the bounding box.
+    
+    Args:
+        collection: A string with BDC collection id
+        data_dir: A string with directory
+        bbox: A tuple in (minx, miny, maxx, maxy) format
+        
+    Returns:
+        list: Scenes filtered by when geometry collides with the bounding box.
+    """
+    # Collection Metadata
+    collection_metadata = load(open(os.path.join(data_dir, collection, str(collection+".json")), 'r', encoding='utf-8'))
+    
+    list_dir = [item for item in os.listdir(os.path.join(data_dir, collection))
+            if os.path.isdir(os.path.join(data_dir, collection, item))]
+    
+    filtered_list = []
+    
+    for scene in list_dir:
+        item = [item for item in collection_metadata['geoms'] if item["tile"] == scene]
+        if (geometry_collides_with_bbox(shape(item[0]['geometry']), bbox)):
+            filtered_list.append(item[0]['tile'])   
+          
+    return filtered_list
+
+def mosaic(name, data_dir, collection, output_dir, start_year, start_month, start_day, duration_months, bands, mosaic_method, geom=None, grid=None, grid_id=None):
     
     #bdc grid
     if (grid != None and grid_id!= None):
@@ -476,38 +605,45 @@ def mosaic(data_dir, collection, output_dir, start_year, start_month, start_day,
         bbox=bbox,
         bands=bands
     )   
-
+    
     collection_get_data(dict_collection)
     
     if (mosaic_method=='lcf'):
 
-        data_dir = os.path.join(data_dir+'/'+collection)
+        coll_data_dir = os.path.join(data_dir+'/'+collection)
 
-        lcf_list = []
+        bands = [bands[0]]
+
+        bands = bands + [cloud_dict[collection]['cloud_band']]
         
-        for path in filter_scenes(os.listdir(data_dir)):
-            scenes_list = []
-            for file in os.listdir(os.path.join(data_dir, path, 'CMASK')):
-                pixel_count = count_pixels_with_value(os.path.join(data_dir, path, 'CMASK', file), 127)
-                #por região não total
-                scenes_list.append(dict(date=file.split("_")[3], clean_percentage=float(pixel_count['count']/pixel_count['total']), scene=path, file=''))
-            for file in os.listdir(os.path.join(data_dir, path, bands[0])):
-                next((item.update(file=os.path.join(data_dir, path, bands[0], file)) for item in scenes_list if item['date'] == file.split("_")[3]), None)
-            sorted_data = sorted(scenes_list, key=lambda x: x['clean_percentage'], reverse=True)
-            lcf_list.append(sorted_data[0])
+        sorted_data_list = []
+
+        for band in bands:
+            sorted_data = []
+            print(f"Building {band} mosaic using {len(filter_scenes(collection, data_dir, bbox))} scenes from the {collection}")
+            for path in filter_scenes(collection, data_dir, bbox):
+                scenes_list = []
+                for file in os.listdir(os.path.join(coll_data_dir, path, cloud_dict[collection]['cloud_band'])):
+                    pixel_count = count_pixels_with_value(os.path.join(coll_data_dir, path, cloud_dict[collection]['cloud_band'], file), cloud_dict[collection]['non_cloud_values'][0])
+                    #por região não total
+                    scenes_list.append(dict(date=file.split("_")[3], clean_percentage=float(pixel_count['count']/pixel_count['total']), scene=path, file=''))
+                for file in os.listdir(os.path.join(coll_data_dir, path, band)):
+                    next((item.update(file=os.path.join(coll_data_dir, path, band, file)) for item in scenes_list if item['date'] == file.split("_")[3]), None)
+                sorted_data = sorted(scenes_list, key=lambda x: x['clean_percentage'], reverse=True)
+                sorted_data_list.append(dict(band=band, scene=path, data=sorted_data))
+
+        lcf_list = merge_scene(sorted_data_list, collection, bands, data_dir)
         
-        tif_files = []
-        for file in lcf_list:
-            tif_files.append(file['file'])  
+        band = bands[0]
         
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
-        output_file = os.path.join(output_dir, "raw-mosaic-"+collection.split("-")[0].lower()+"-"+bands[0].lower()+"-brazil-"+str(duration_months)+"m.tif")  
+        output_file = os.path.join(output_dir, "raw-mosaic-"+collection.split("-")[0].lower()+"-"+band.lower()+"-"+name+"-"+str(duration_months)+"m.tif")  
         
-        datasets = [rasterio.open(file) for file in tif_files]        
+        datasets = [rasterio.open(file) for file in lcf_list]        
 
         extents = get_dataset_extents(datasets)
 
-        merge_tifs(tif_files, output_file, extents)
+        merge_tifs(lcf_list, output_file, band, extents)
         
-        clip_raster(input_raster_path=output_file, output_folder=output_dir,clip_geometry=geom,output_filename="mosaic-"+collection.split("-")[0].lower()+"-"+bands[0].lower()+"-brazil-"+str(duration_months)+"m.tif")
+        clip_raster(input_raster_path=output_file, output_folder=output_dir,clip_geometry=geom,output_filename="mosaic-"+collection.split("-")[0].lower()+"-"+band.lower()+"-"+name+"-"+str(duration_months)+"m.tif")
