@@ -71,9 +71,13 @@ def open_geojson(file_path):
 
     return shape(geojson_data["features"][0]["geometry"]) if geojson_data["type"] == "FeatureCollection" else shape(geojson_data)
 
-def load_json():
-    json_path = files("smosaic.config") / "grids.json"
-    return json.loads(json_path.read_text(encoding="utf-8"))
+def load_jsons(cut_grid):
+    if (cut_grid == "grids"):
+        grid_json_path = files("smosaic.config") / "grids.json"
+        return json.loads(grid_json_path.read_text(encoding="utf-8"))
+    if (cut_grid == "states"):
+        states_json_path = files("smosaic.config") / "br_states.json"
+        return json.loads(states_json_path.read_text(encoding="utf-8"))
 
 def collection_query(collection, start_date, end_date, tile=None, bbox=None, freq=None, bands=None):
     """An object that contains the information associated with a collection 
@@ -579,17 +583,31 @@ def filter_scenes(collection, data_dir, bbox):
 
 def mosaic(name, data_dir, collection, output_dir, start_year, start_month, start_day, duration_months, bands, mosaic_method, geom=None, grid=None, grid_id=None):
     
-    #bdc grid
+    #grid
     if (grid != None and grid_id!= None):
-        bdc_grids_data = load_json()
-        selected_tile = ''
-        for g in bdc_grids_data['grids']:
-            if (g['name'] == grid):
-                for tile in g['features']:
-                    if tile['properties']['tile'] == grid_id:
-                        selected_tile = tile
-        geometry = selected_tile['properties']['geometry']
-        bbox = shape(geometry).bounds
+        if (grid == "br_states"):
+            br_states = load_jsons("states")
+            
+            # Ensure the state code is uppercase for comparison
+            state_code = grid_id.upper()
+            
+            # Iterate through features to find the matching state
+            for feature in br_states['features']:
+                if feature['id'] == state_code:
+                    geom = feature['geometry']
+                    bbox = shape(geom).bounds
+                    geom = shape(geom["features"][0]["geometry"]) if geom["type"] == "FeatureCollection" else shape(geom)
+        else:
+            bdc_grids_data = load_jsons("grids")
+            selected_tile = ''
+            for g in bdc_grids_data['grids']:
+                if (g['name'] == grid):
+                    for tile in g['features']:
+                        if tile['properties']['tile'] == grid_id:
+                            selected_tile = tile
+            geom = selected_tile['properties']['geometry']
+            bbox = shape(geom).bounds
+            geom = shape(geom["features"][0]["geometry"]) if geom["type"] == "FeatureCollection" else shape(geom)
 
     #geometry
     else:
