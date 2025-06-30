@@ -181,7 +181,7 @@ def collection_get_data(datacube, data_dir):
                 tiles.append(tile)
                 
     for tile in tiles:
-        print(data_dir+"/"+collection+"/"+tile)      
+        #print(data_dir+"/"+collection+"/"+tile)      
         if not os.path.exists(data_dir+"/"+collection+"/"+tile):
             os.makedirs(data_dir+"/"+collection+"/"+tile)
         for band in bands:
