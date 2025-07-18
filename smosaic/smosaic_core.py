@@ -34,6 +34,11 @@ cloud_dict = {
         'non_cloud_values': [4,5,6],
         'cloud_values': [0,1,2,3,7,8,9,10,11]
     },
+    'S2_L2A-1':{
+        'cloud_band': 'SCL',
+        'non_cloud_values': [4,5,6],
+        'cloud_values': [0,1,2,3,7,8,9,10,11]
+    },
     'AMZ1-WFI-L4-SR-1':{
         'cloud_band': 'CMASK',
         'non_cloud_values': [127],
@@ -179,6 +184,10 @@ def collection_get_data(datacube, data_dir):
             tile = item.id.split("_")[4]+'_'+item.id.split("_")[5]
             if tile not in tiles:
                 tiles.append(tile)
+        if (collection=="S2_L2A-1"):
+            tile = item.id.split("_")[5][1:]
+            if tile not in tiles:
+                tiles.append(tile)
                 
     for tile in tiles:
         #print(data_dir+"/"+collection+"/"+tile)      
@@ -195,6 +204,8 @@ def collection_get_data(datacube, data_dir):
         for band in bands:
             if (collection=="AMZ1-WFI-L4-SR-1"):
                 tile = item.id.split("_")[4]+'_'+item.id.split("_")[5]
+
+
             response = requests.get(item.assets[band].href, stream=True)
             if not any(tile_dict["tile"] == tile for tile_dict in geom_map):
                 geom_map.append(dict(tile=tile, geometry=item.geometry))
