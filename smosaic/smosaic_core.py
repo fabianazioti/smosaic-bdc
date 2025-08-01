@@ -356,7 +356,7 @@ def add_months_to_date(start_date, months_to_add):
     # Then get the last day of THAT month
     return target_date + relativedelta(day=31)
 
-def merge_tifs(tif_files, output_path, band, scene=None, extent=None):
+def merge_tifs(tif_files, output_path, band, path_row=None, extent=None):
     """
     Merge a list of TIFF files into one mosaic, reprojecting to EPSG:4326.
     
@@ -423,7 +423,7 @@ def merge_tifs(tif_files, output_path, band, scene=None, extent=None):
             if band in cloud_bands:
                 nodata = 0 
             else:
-                nodata = -9999
+                nodata = 0 
 
             # Write the reprojected data to a temporary file
             with rasterio.open(
@@ -471,8 +471,9 @@ def merge_tifs(tif_files, output_path, band, scene=None, extent=None):
     
     with rasterio.open(output_path, "w", **out_meta) as dest:
         dest.write(mosaic)
-    if(scene):
-        print(f"Successfully merged {len(src_files_to_mosaic)} files for {scene} scene.")
+
+    if(path_row):
+        print(f"Successfully merged {len(src_files_to_mosaic)} files for {path_row} scene.")
     else:
         print(f"Successfully merged {len(src_files_to_mosaic)} files.")
     
@@ -493,6 +494,7 @@ def merge_scene(sorted_data, cloud_sorted_data, scenes, collection, band, data_d
     merge_files = []
 
     for scene in scenes:
+
         images =  [item['file'] for item in sorted_data if item.get("scene") == scene]
         cloud_images = [item['file'] for item in cloud_sorted_data if item.get("scene") == scene]
         temp_images = []
@@ -529,21 +531,23 @@ def merge_scene(sorted_data, cloud_sorted_data, scenes, collection, band, data_d
             with rasterio.open(os.path.join(data_dir, file_name), 'w', **profile) as dst:
                 dst.write(masked_image)
 
+        temp_images.append(images[0])
+
         output_file = os.path.join(data_dir, "merge_"+collection.split('-')[0]+"_"+scene+"_"+band+".tif")  
 
-        datasets = [rasterio.open(file) for file in temp_images]    
+        datasets = [rasterio.open(file) for file in temp_images]  
 
         extents = get_dataset_extents(datasets)
 
-        merge_tifs(temp_images, output_file, band, scene, extents)
+        merge_tifs(tif_files=temp_images, output_path=output_file, band=band, path_row=scene, extent=extents)
 
         merge_files.append(output_file)
 
-        #for f in temp_images:
-        #    try:
-        #        os.remove(f)
-        #    except:
-        #       pass
+        for f in temp_images:
+            try:
+                os.remove(f)
+            except:
+                pass
 
 
     return merge_files
@@ -586,12 +590,10 @@ def filter_scenes(collection, data_dir, bbox):
     filtered_list = []
     
     for scene in list_dir:
-        try:
-            item = [item for item in collection_metadata['geoms'] if item["tile"] == scene]
-            if (geometry_collides_with_bbox(shape(item[0]['geometry']), bbox)):
-                    filtered_list.append(item[0]['tile'])   
-        except:
-            pass
+        item = [item for item in collection_metadata['geoms'] if item["tile"] == scene]
+        if (geometry_collides_with_bbox(shape(item[0]['geometry']), bbox)):
+            filtered_list.append(item[0]['tile'])   
+          
     return filtered_list
 
 def generate_cog(input_folder: str, input_filename: str, compress: str = 'LZW') -> str:
@@ -614,6 +616,9 @@ def generate_cog(input_folder: str, input_filename: str, compress: str = 'LZW') 
     return output_file
 
 def mosaic(name, data_dir, collection, output_dir, start_year, start_month, start_day, duration_months, bands, mosaic_method, geom=None, grid=None, grid_id=None):
+    
+    if collection not in ['S2_L2A-1']:
+        return print(f"{collection['collection']} collection not yet supported.")
     
     #grid
     if (grid != None and grid_id!= None):
@@ -683,6 +688,10 @@ def mosaic(name, data_dir, collection, output_dir, start_year, start_month, star
                 band_list.append(dict(band=bands[0], date=date, clean_percentage=float(pixel_count['count']/pixel_count['total']), scene=path, file=''))
         
         print(f"Building {bands[0]} mosaic using {len(scenes)} scenes from the {collection}.")
+        
+        bands_links = []
+        cloud_links = []
+
         for path in scenes:
             for band in bands_cloud:
                 for file in os.listdir(os.path.join(coll_data_dir, path, band)):
@@ -693,29 +702,30 @@ def mosaic(name, data_dir, collection, output_dir, start_year, start_month, star
                     if(band == cloud_dict[collection]['cloud_band']):
                         for item in cloud_list:
                             if item['date'] == date:
-                                item['file']=os.path.join(coll_data_dir, path, band, file)
+                                item['file'] = os.path.join(coll_data_dir, path, band, file)
+                                cloud_links.append(dict(band=band, date=date, clean_percentage=item['clean_percentage'], scene=path, file=os.path.join(coll_data_dir, path, band, file)))
                     else:
                         for item in band_list:
                             if item['date'] == date:
-                                item['file']=os.path.join(coll_data_dir, path, band, file)
-                  
-        sorted_data = sorted(band_list, key=lambda x: x['clean_percentage'], reverse=True)
-        cloud_sorted_data = sorted(cloud_list, key=lambda x: x['clean_percentage'], reverse=True)
+                                bands_links.append(dict(band=band, date=date, clean_percentage=item['clean_percentage'], scene=path, file=os.path.join(coll_data_dir, path, band, file)))
+
+        sorted_data = sorted(bands_links, key=lambda x: x['clean_percentage'], reverse=True)
+        cloud_sorted_data = sorted(cloud_links, key=lambda x: x['clean_percentage'], reverse=True)
 
         lcf_list = merge_scene(sorted_data, cloud_sorted_data, scenes, collection, bands[0], data_dir)
 
-        # band = bands[0]
+        band = bands[0]
         
-        # if not os.path.exists(output_dir):
-        #     os.makedirs(output_dir)
-        # output_file = os.path.join(output_dir, "raw-mosaic-"+collection.split("-")[0].lower()+"-"+band.lower()+"-"+name+"-"+str(duration_months)+"m.tif")  
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+        output_file = os.path.join(output_dir, "raw-mosaic-"+collection.split("-")[0].lower()+"-"+band.lower()+"-"+name+"-"+str(duration_months)+"m.tif")  
         
-        # datasets = [rasterio.open(file) for file in lcf_list]        
+        datasets = [rasterio.open(file) for file in lcf_list]        
 
-        # extents = get_dataset_extents(datasets)
+        extents = get_dataset_extents(datasets)
 
-        # merge_tifs(lcf_list, output_file, band, name, extents)
+        merge_tifs(tif_files=lcf_list, output_path=output_file, band=band, path_row=name, extent=extents)
         
-        # clip_raster(input_raster_path=output_file, output_folder=output_dir,clip_geometry=geom,output_filename="mosaic-"+collection.split("-")[0].lower()+"-"+band.lower()+"-"+name+"-"+str(duration_months)+"m.tif")
+        clip_raster(input_raster_path=output_file, output_folder=output_dir,clip_geometry=geom,output_filename="mosaic-"+collection.split("-")[0].lower()+"-"+band.lower()+"-"+name+"-"+str(duration_months)+"m.tif")
 
-        # generate_cog(input_folder=output_dir, input_filename="mosaic-"+collection.split("-")[0].lower()+"-"+bands[0].lower()+"-"+name+"-"+str(duration_months)+"m", compress='LZW')
+        generate_cog(input_folder=output_dir, input_filename="mosaic-"+collection.split("-")[0].lower()+"-"+bands[0].lower()+"-"+name+"-"+str(duration_months)+"m", compress='LZW')
