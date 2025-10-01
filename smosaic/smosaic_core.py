@@ -55,8 +55,6 @@ coverage_proj = pyproj.CRS.from_wkt('''
         AXIS["Easting",EAST],
         AXIS["Northing",NORTH]]''')
 
-stac = pystac_client.Client.open("https://data.inpe.br/bdc/stac/v1")
-
 def open_geojson(file_path):
     
     geojson_data = json.load(open(file_path, 'r', encoding='utf-8'))
@@ -137,7 +135,7 @@ def download_stream(file_path: str, response, chunk_size=1024*64, progress=True,
         os.remove(file_path)
         raise IOError(f'Download file is corrupt. Expected {total_size} bytes, got {file_size}')
 
-def collection_get_data(datacube, data_dir):
+def collection_get_data(stac, datacube, data_dir):
     
     collection = datacube['collection']
     bbox = datacube['bbox']
@@ -606,7 +604,9 @@ def generate_cog(input_folder: str, input_filename: str, compress: str = 'LZW') 
     
     return output_file
 
-def mosaic(name, data_dir, collection, output_dir, start_year, start_month, start_day, duration_months, bands, mosaic_method, geom=None, grid=None, grid_id=None):
+def mosaic(name, data_dir, stac_url, collection, output_dir, start_year, start_month, start_day, duration_months, bands, mosaic_method, geom=None, grid=None, grid_id=None):
+
+    stac = pystac_client.Client.open(stac_url)
 
     if collection not in ['S2_L2A-1', 'S2-16D-2']:
         return print(f"{collection['collection']} collection not yet supported.")
@@ -633,7 +633,7 @@ def mosaic(name, data_dir, collection, output_dir, start_year, start_month, star
                             selected_tile = tile
             geom = selected_tile['properties']['geometry']
             bbox = shapely.geometry.shape(geom).bounds
-            geom = shapely.geometry.shape(geom["features"][0]["geometry"]) if geom["type"] == "FeatureCollection" else shape(geom)
+            geom = shapely.geometry.shape(geom["features"][0]["geometry"]) if geom["type"] == "FeatureCollection" else shapely.geometry.shape(geom)
 
     # geometry
     else:
@@ -652,7 +652,7 @@ def mosaic(name, data_dir, collection, output_dir, start_year, start_month, star
     
     collection_name = dict_collection['collection']
 
-    collection_get_data(dict_collection, data_dir=data_dir)
+    collection_get_data(stac, dict_collection, data_dir=data_dir)
     
     if (mosaic_method=='lcf'):
 
