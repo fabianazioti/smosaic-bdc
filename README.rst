@@ -41,8 +41,8 @@ Simple python package for creating satellite image mosaics based on Brazil Data 
         :alt: Release
 
 
-.. image:: https://img.shields.io/pypi/v/wcpms
-        :target: https://pypi.org/project/wcpms/
+.. image:: https://img.shields.io/pypi/v/smosaic
+        :target: https://pypi.org/project/smosaic/
         :alt: Python Package Index
 
 
@@ -60,7 +60,13 @@ Simple python package for creating satellite image mosaics based on Brazil Data 
 Installation
 ============
 
-See `INSTALL.rst <./INSTALL.rst>`_.
+See `INSTALL.rst <./INSTALL.rst>`_
+
+
+Changes
+=======
+
+See `CHANGES.rst <./CHANGES.rst>`_
 
 
 Using WLTS in the Command Line
