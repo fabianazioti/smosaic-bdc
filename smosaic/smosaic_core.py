@@ -1,32 +1,16 @@
-import requests
-import os, glob
-import zipfile
-import pyproj
-from tqdm import tqdm
-from pystac_client import Client
-from importlib.resources import files
+import os
+import tqdm
 import json
-from json import load
-import rasterio
-import numpy as np
-from rasterio.merge import merge
-from rasterio.mask import mask
-from shapely.geometry import box
-from shapely.geometry import MultiPolygon
-from shapely.geometry import mapping
-from shapely.geometry import shape
-from shapely.ops import transform
-from math import cos, pi
+import osgeo
 import pyproj
-from pyproj import Transformer
 import shapely
+import dateutil
 import rasterio
-from rasterio.merge import merge
-from rasterio.warp import calculate_default_transform, reproject, Resampling
+import requests
+import datetime
+import importlib
 import numpy as np
-from datetime import datetime
-from dateutil.relativedelta import relativedelta
-from osgeo import gdal
+import pystac_client
 
 cloud_dict = {
     'S2-16D-2':{
@@ -71,20 +55,20 @@ coverage_proj = pyproj.CRS.from_wkt('''
         AXIS["Easting",EAST],
         AXIS["Northing",NORTH]]''')
 
-stac = Client.open("https://data.inpe.br/bdc/stac/v1")
+stac = pystac_client.Client.open("https://data.inpe.br/bdc/stac/v1")
 
 def open_geojson(file_path):
     
-    geojson_data = load(open(file_path, 'r', encoding='utf-8'))
+    geojson_data = json.load(open(file_path, 'r', encoding='utf-8'))
 
-    return shape(geojson_data["features"][0]["geometry"]) if geojson_data["type"] == "FeatureCollection" else shape(geojson_data)
+    return shapely.geometry.shape(geojson_data["features"][0]["geometry"]) if geojson_data["type"] == "FeatureCollection" else shapely.geometry.shape(geojson_data)
 
 def load_jsons(cut_grid):
     if (cut_grid == "grids"):
-        grid_json_path = files("smosaic.config") / "grids.json"
+        grid_json_path = importlib.resources.files("smosaic.config") / "grids.json"
         return json.loads(grid_json_path.read_text(encoding="utf-8"))
     if (cut_grid == "states"):
-        states_json_path = files("smosaic.config") / "br_states.json"
+        states_json_path = importlib.resources.files("smosaic.config") / "br_states.json"
         return json.loads(states_json_path.read_text(encoding="utf-8"))
 
 def collection_query(collection, start_date, end_date, tile=None, bbox=None, freq=None, bands=None):
@@ -129,7 +113,7 @@ def download_stream(file_path: str, response, chunk_size=1024*64, progress=True,
 
     file_name = os.path.basename(file_path)
 
-    progress_bar = tqdm(
+    progress_bar = tqdm.tqdm(
         desc=file_name[:30]+'... ',
         total=total_size,
         unit="B",
@@ -141,7 +125,6 @@ def download_stream(file_path: str, response, chunk_size=1024*64, progress=True,
 
     mode = 'a+b' if offset else 'wb'
 
-    # May throw exception for read-only directory
     with response:
         with open(file_path, mode) as stream:
             for chunk in response.iter_content(chunk_size):
@@ -153,17 +136,6 @@ def download_stream(file_path: str, response, chunk_size=1024*64, progress=True,
     if file_size != total_size:
         os.remove(file_path)
         raise IOError(f'Download file is corrupt. Expected {total_size} bytes, got {file_size}')
-
-def unzip():
-    for z in glob.glob("*.zip"):
-        try:
-            with zipfile.ZipFile(os.path.join(z), 'r') as zip_ref:
-                #print('Unziping '+ z)
-                zip_ref.extractall('unzip')
-                os.remove(z)
-        except:
-            #print("An exception occurred")
-            os.remove(z)
 
 def collection_get_data(datacube, data_dir):
     
@@ -206,7 +178,7 @@ def collection_get_data(datacube, data_dir):
     geom_map = []
     download = False
 
-    for item in tqdm(desc='Downloading... ', unit=" itens", total=item_search.matched(), iterable=item_search.items()):
+    for item in tqdm.tqdm(desc='Downloading... ', unit=" itens", total=item_search.matched(), iterable=item_search.items()):
         for band in bands:
             if (collection=="AMZ1-WFI-L4-SR-1"):
                 tile = item.id.split("_")[4]+'_'+item.id.split("_")[5]
@@ -231,24 +203,46 @@ def collection_get_data(datacube, data_dir):
 
     print(f"Successfully download {item_search.matched()} files to {os.path.join(collection)}")
 
-def create_multipolygon(polygons, crs=None):
-    """
-    Create a MultiPolygon from a list of Polygons with CRS support.
-    
+def download_stream(file_path: str, response, chunk_size=1024*64, progress=True, offset=0, total_size=None):
+    """Download request stream data to disk.
+
     Args:
-        polygons: List of Shapely Polygon objects
-        crs: Optional CRS (Coordinate Reference System)
-        
-    Returns:
-        GeoDataFrame containing the MultiPolygon with CRS
+        file_path - Absolute file path to save
+        response - HTTP Response object
     """
-    # Create MultiPolygon
-    multipoly = MultiPolygon(polygons)
-    
-    # Create GeoDataFrame
-    gdf = gpd.GeoDataFrame(geometry=[multipoly], crs=crs)
-    
-    return gdf
+    parent = os.path.dirname(file_path)
+
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+
+    if not total_size:
+        total_size = int(response.headers.get('Content-Length', 0))
+
+    file_name = os.path.basename(file_path)
+
+    progress_bar = tqdm.tqdm(
+        desc=file_name[:30]+'... ',
+        total=total_size,
+        unit="B",
+        unit_scale=True,
+        #disable=not progress,
+        initial=offset,
+        disable=True
+    )
+
+    mode = 'a+b' if offset else 'wb'
+
+    with response:
+        with open(file_path, mode) as stream:
+            for chunk in response.iter_content(chunk_size):
+                stream.write(chunk)
+                progress_bar.update(chunk_size)
+
+    file_size = os.stat(file_path).st_size
+
+    if file_size != total_size:
+        os.remove(file_path)
+        raise IOError(f'Download file is corrupt. Expected {total_size} bytes, got {file_size}')
 
 def clip_raster(input_raster_path, output_folder, clip_geometry, output_filename=None):
     """
@@ -264,10 +258,8 @@ def clip_raster(input_raster_path, output_folder, clip_geometry, output_filename
     - Path to the saved clipped raster
     """
     
-    # Create output folder if it doesn't exist
     os.makedirs(output_folder, exist_ok=True)
     
-    # Determine output filename
     if output_filename is None:
         base_name = os.path.basename(input_raster_path)
         name, ext = os.path.splitext(base_name)
@@ -275,38 +267,26 @@ def clip_raster(input_raster_path, output_folder, clip_geometry, output_filename
     
     output_path = os.path.join(output_folder, output_filename)
     
-    # Open the input raster
     with rasterio.open(input_raster_path) as src:
-        # Clip the raster using the geometry
-        out_image, out_transform = mask(
+        out_image, out_transform = rasterio.mask (
             src, 
-            [mapping(clip_geometry)],  # Convert Shapely geometry to GeoJSON-like dict
+            [shapely.geometry.mapping(clip_geometry)],  
             crop=True,
             all_touched=True
         )
         
-        # Copy the metadata from the source raster
         out_meta = src.meta.copy()
         
-        # Update metadata with new transform and dimensions
         out_meta.update({
             "height": out_image.shape[1],
             "width": out_image.shape[2],
             "transform": out_transform
         })
         
-        # Write the clipped raster to disk
         with rasterio.open(output_path, "w", **out_meta) as dest:
             dest.write(out_image)
             
     os.remove(input_raster_path)
-
-    for f in [os.path.join(os.path.dirname(input_raster_path), f) for f in os.listdir(os.path.dirname(input_raster_path)) if f.startswith("merge_")]:
-        try:
-            os.remove(f)
-        except:
-            pass
-
     return output_path
 
 def count_pixels_with_value(raster_path, target_value):
@@ -320,12 +300,10 @@ def count_pixels_with_value(raster_path, target_value):
     Returns:
         int: Count of pixels with the target value
     """
-    # Open the raster file
+    
     with rasterio.open(raster_path) as src:
-        # Read all data (assuming single-band raster)
         data = src.read(1)
         
-        # Count pixels with the target value
         count = (data == target_value).sum()
         
         return dict(total=data.size, count=count)
@@ -333,20 +311,18 @@ def count_pixels_with_value(raster_path, target_value):
 def get_dataset_extents(datasets):
     extents = []
     for ds in datasets:
-        # Get the bounding box coordinates
+
         left, bottom, right, top = ds.bounds
         
-        # Create a shapely Polygon representing the extent
-        extent = box(left, bottom, right, top)
+        extent = shapely.geometry.box(left, bottom, right, top)
         
         data_proj = ds.crs
-        proj_converter = Transformer.from_crs(data_proj, pyproj.CRS.from_epsg(4326), always_xy=True).transform
-        reproj_bbox = transform(proj_converter, extent)
+        proj_converter = pyproj.Transformer.from_crs(data_proj, pyproj.CRS.from_epsg(4326), always_xy=True).transform
+        reproj_bbox = shapely.ops.transform(proj_converter, extent)
         
-        # Store both the geometry and CRS
         extents.append(reproj_bbox)
         
-    return MultiPolygon(extents).bounds
+    return shapely.geometry.MultiPolygon(extents).bounds
 
 def add_months_to_date(start_date, months_to_add):
     """
@@ -361,12 +337,11 @@ def add_months_to_date(start_date, months_to_add):
         datetime: Last day of the target month
     """
     if isinstance(start_date, str):
-        start_date = datetime.strptime(start_date, "%Y-%m-%d")
+        start_date = datetime.datetime.strptime(start_date, "%Y-%m-%d")
     
-    # First calculate the target month
-    target_date = start_date + relativedelta(months=months_to_add)
-    # Then get the last day of THAT month
-    return target_date + relativedelta(day=31)
+    target_date = start_date + dateutil.relativedelta.relativedelta(months=months_to_add)
+
+    return target_date + dateutil.relativedelta.relativedelta(day=31)
 
 def merge_tifs(tif_files, output_path, band, path_row=None, extent=None):
     """
@@ -383,50 +358,43 @@ def merge_tifs(tif_files, output_path, band, path_row=None, extent=None):
         If None, will use the combined extent of all input files.
     """
     
-    # First, reproject all files to EPSG:4326 and collect their bounds
     reprojected_files = []
     bounds = []
     
     for tif in tif_files:
         with rasterio.open(tif) as src:
-            # Get the bounds in source CRS
-            left, bottom, right, top = src.bounds
-            src_extent = box(left, bottom, right, top)
             
-            # Create transformer to convert to WGS84
-            proj_converter = Transformer.from_crs(
+            left, bottom, right, top = src.bounds
+            src_extent = shapely.geometry.box(left, bottom, right, top)
+            
+            proj_converter = pyproj.Transformer.from_crs(
                 src.crs, 
                 'EPSG:4326', 
                 always_xy=True
             ).transform
             
-            # Transform the bounding box to WGS84
-            reproj_bbox = transform(proj_converter, src_extent)
+            reproj_bbox = shapely.ops.transform(proj_converter, src_extent)
             bounds.append(reproj_bbox.bounds)
             
-            # Reproject the file to WGS84
             dst_crs = 'EPSG:4326'
             
-            # Calculate the transform for the reprojected image (renamed to dst_transform)
-            dst_transform, width, height = calculate_default_transform(
+            dst_transform, width, height = rasterio.warp.calculate_default_transform(
                 src.crs, dst_crs, src.width, src.height, *src.bounds
             )
             
-            # Create a temporary in-memory file for the reprojected data
             reproj_data = np.zeros((src.count, height, width), dtype=src.dtypes[0])
             
-            reproject(
+            rasterio.warp.reproject(
                 source=rasterio.band(src, range(1, src.count + 1)),
                 destination=reproj_data,
                 src_transform=src.transform,
                 src_crs=src.crs,
                 dst_transform=dst_transform,
                 dst_crs=dst_crs,
-                resampling=Resampling.nearest,
+                resampling=rasterio.warp.Resampling.nearest,
                 nodata=0
             )
             
-            # Create a temporary file path
             temp_path = f'temp_{os.path.basename(tif)}'
             reprojected_files.append(temp_path)
 
@@ -437,7 +405,6 @@ def merge_tifs(tif_files, output_path, band, path_row=None, extent=None):
             else:
                 nodata = 0 
 
-            # Write the reprojected data to a temporary file
             with rasterio.open(
                 temp_path,
                 'w',
@@ -452,7 +419,6 @@ def merge_tifs(tif_files, output_path, band, path_row=None, extent=None):
             ) as dst:
                 dst.write(reproj_data)
     
-    # Determine the output bounds if not provided
     if extent is None:
         minx = min(b[0] for b in bounds)
         miny = min(b[1] for b in bounds)
@@ -462,16 +428,13 @@ def merge_tifs(tif_files, output_path, band, path_row=None, extent=None):
     else:
         minx, miny, maxx, maxy = extent
     
-    # Open all reprojected files
     src_files_to_mosaic = []
     for f in reprojected_files:
         src = rasterio.open(f)
         src_files_to_mosaic.append(src)
     
-    # Merge all files
-    mosaic, out_trans = merge(src_files_to_mosaic, bounds=extent)
+    mosaic, out_trans = rasterio.merge(src_files_to_mosaic, bounds=extent)
     
-    # Write the merged file
     out_meta = src.meta.copy()
     out_meta.update({
         "driver": "GTiff",
@@ -489,7 +452,6 @@ def merge_tifs(tif_files, output_path, band, path_row=None, extent=None):
     else:
         print(f"Successfully merged {len(src_files_to_mosaic)} files.")
     
-    # Close all files and clean up temporary files
     for src in src_files_to_mosaic:
         src.close()
     
@@ -526,11 +488,9 @@ def merge_scene(sorted_data, cloud_sorted_data, scenes, collection, band, data_d
                 )
             clear_mask = np.isin(cloud_mask, cloud_dict[collection]['non_cloud_values'])
 
-            # Fix: Ensure profile['nodata'] is set before creating masked_image
             if 'nodata' not in profile or profile['nodata'] is None:
                 profile['nodata'] = 0  
 
-            # Now create the masked array with a valid nodata value
             masked_image = np.full_like(image_data, profile['nodata'])
 
             for band_idx in range(image_data.shape[0]):
@@ -574,10 +534,9 @@ def geometry_collides_with_bbox(geometry,input_bbox):
     Returns:
         bool: True if the geometry intersects with the bbox, False otherwise
     """
-    # Create a Polygon from the bbox
-    bbox_polygon = box(*input_bbox)
+
+    bbox_polygon = shapely.geometry.box(*input_bbox)
     
-    # Check for intersection
     return geometry.intersects(bbox_polygon)
 
 def filter_scenes(collection, data_dir, bbox):
@@ -592,8 +551,8 @@ def filter_scenes(collection, data_dir, bbox):
     Returns:
         list: Scenes filtered by when geometry collides with the bounding box.
     """
-    # Collection Metadata
-    collection_metadata = load(open(os.path.join(data_dir, collection, str(collection+".json")), 'r', encoding='utf-8'))
+
+    collection_metadata = json.load(open(os.path.join(data_dir, collection, str(collection+".json")), 'r', encoding='utf-8'))
     
     list_dir = [item for item in os.listdir(os.path.join(data_dir, collection))
             if os.path.isdir(os.path.join(data_dir, collection, item))]
@@ -602,26 +561,39 @@ def filter_scenes(collection, data_dir, bbox):
     
     for scene in list_dir:
         item = [item for item in collection_metadata['geoms'] if item["tile"] == scene]
-        if (geometry_collides_with_bbox(shape(item[0]['geometry']), bbox)):
+        if (geometry_collides_with_bbox(shapely.geometry.shape(item[0]['geometry']), bbox)):
             filtered_list.append(item[0]['tile'])   
           
     return filtered_list
+
+def clean_dir(data_dir):
+    files_to_delete = [
+        os.path.join(data_dir, f) 
+        for f in os.listdir(data_dir) 
+        if f.startswith("merge_")
+    ]
+    
+    for f in files_to_delete:
+        try:
+            os.remove(f)
+        except:
+            pass
 
 def generate_cog(input_folder: str, input_filename: str, compress: str = 'LZW') -> str:
     """Generate COG file."""
     input_file = os.path.join(input_folder, f'{input_filename}.tif')
     output_file = os.path.join(input_folder, f'{input_filename}_COG.tif')
 
-    gdal.Translate(
+    osgeo.gdal.Translate(
         output_file,
         input_file,
-        options=gdal.TranslateOptions(
+        options=osgeo.gdal.TranslateOptions(
             format='COG',
             creationOptions=[
                 f'COMPRESS={compress}',
                 'BIGTIFF=IF_SAFER'
             ],
-            outputType=gdal.GDT_Int16
+            outputType=osgeo.gdal.GDT_Int16
         )
     )
 
@@ -635,24 +607,22 @@ def generate_cog(input_folder: str, input_filename: str, compress: str = 'LZW') 
     return output_file
 
 def mosaic(name, data_dir, collection, output_dir, start_year, start_month, start_day, duration_months, bands, mosaic_method, geom=None, grid=None, grid_id=None):
-    
+
     if collection not in ['S2_L2A-1', 'S2-16D-2']:
         return print(f"{collection['collection']} collection not yet supported.")
     
-    #grid
+    # grid
     if (grid != None and grid_id!= None):
         if (grid == "br_states"):
             br_states = load_jsons("states")
             
-            # Ensure the state code is uppercase for comparison
             state_code = grid_id.upper()
             
-            # Iterate through features to find the matching state
             for feature in br_states['features']:
                 if feature['id'] == state_code:
                     geom = feature['geometry']
-                    bbox = shape(geom).bounds
-                    geom = shape(geom["features"][0]["geometry"]) if geom["type"] == "FeatureCollection" else shape(geom)
+                    bbox = shapely.geometry.shape(geom).bounds
+                    geom = shapely.geometry.shape(geom["features"][0]["geometry"]) if geom["type"] == "FeatureCollection" else shapely.geometry.shape(geom)
         else:
             bdc_grids_data = load_jsons("grids")
             selected_tile = ''
@@ -662,14 +632,14 @@ def mosaic(name, data_dir, collection, output_dir, start_year, start_month, star
                         if tile['properties']['tile'] == grid_id:
                             selected_tile = tile
             geom = selected_tile['properties']['geometry']
-            bbox = shape(geom).bounds
-            geom = shape(geom["features"][0]["geometry"]) if geom["type"] == "FeatureCollection" else shape(geom)
+            bbox = shapely.geometry.shape(geom).bounds
+            geom = shapely.geometry.shape(geom["features"][0]["geometry"]) if geom["type"] == "FeatureCollection" else shape(geom)
 
-    #geometry
+    # geometry
     else:
         bbox = geom.bounds
 
-    start_date = datetime.strptime(str(start_year)+'-'+str(start_month)+'-'+str(start_day), "%Y-%m-%d").strftime("%Y-%m-%d")
+    start_date = datetime.datetime.strptime(str(start_year)+'-'+str(start_month)+'-'+str(start_day), "%Y-%m-%d").strftime("%Y-%m-%d")
     end_date = str(add_months_to_date(start_date, duration_months-1).strftime('%Y-%m-%d'))
 
     dict_collection=collection_query(
@@ -758,3 +728,5 @@ def mosaic(name, data_dir, collection, output_dir, start_year, start_month, star
             clip_raster(input_raster_path=output_file, output_folder=output_dir, clip_geometry=geom,output_filename="mosaic-"+collection_name.split("-")[0].lower()+"-"+band.lower()+"-"+name+"-"+str(duration_months)+"m.tif")
             
             generate_cog(input_folder=output_dir, input_filename="mosaic-"+collection_name.split("-")[0].lower()+"-"+bands[i].lower()+"-"+name+"-"+str(duration_months)+"m", compress='LZW')
+
+            clean_dir(data_dir)
