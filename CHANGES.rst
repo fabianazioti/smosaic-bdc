@@ -26,6 +26,7 @@ Changes
 * **Refactored library code**: Adjusted imports and the use of libraries in the code, removing imports of individual functions.
 * **New Notebooks**: Added several example notebooks:
     * ``smosaic-introduction.ipynb``: A complete example of creating a Sentinel-2 multi-band mosaic for Luis Eduardo Magalhaes - BA.
+* **Refactor mosaic function**:  Standardize mosaic output filename structure.
 
 
 Version 0.0.1 (2025-06-04)
