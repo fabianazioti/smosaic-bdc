@@ -229,11 +229,11 @@ def download_stream(file_path: str, response, chunk_size=1024*64, progress=True,
                 stream.write(chunk)
                 progress_bar.update(chunk_size)
 
-    file_size = os.stat(file_path).st_size
+    #file_size = os.stat(file_path).st_size
 
-    if file_size != total_size:
-        os.remove(file_path)
-        raise IOError(f'Download file is corrupt. Expected {total_size} bytes, got {file_size}')
+    #if file_size != total_size:
+    #    os.remove(file_path)
+    #    raise IOError(f'Download file is corrupt. Expected {total_size} bytes, got {file_size}')
 
 def clip_raster(input_raster_path, output_folder, clip_geometry, output_filename=None):
     """
@@ -675,6 +675,18 @@ def mosaic(name, data_dir, stac_url, collection, output_dir, start_year, start_m
         })
         current_period_start = add_days_to_date(current_period_start, duration_days)
 
+    dict_collection=collection_query(
+        collection=collection,
+        start_date=start_date.strftime("%Y-%m-%d"),
+        end_date=end_date.strftime("%Y-%m-%d"),
+        bbox=bbox,
+        bands=bands
+    )   
+    
+    collection_name = dict_collection['collection']
+
+    collection_get_data(stac, dict_collection, data_dir=data_dir)
+
     for period in periods:
 
         start_date = period['start']
@@ -682,18 +694,6 @@ def mosaic(name, data_dir, stac_url, collection, output_dir, start_year, start_m
 
         print(dict(start_date=start_date, end_date=end_date))
 
-        dict_collection=collection_query(
-            collection=collection,
-            start_date=start_date,
-            end_date=end_date,
-            bbox=bbox,
-            bands=bands
-        )   
-        
-        collection_name = dict_collection['collection']
-
-        collection_get_data(stac, dict_collection, data_dir=data_dir)
-        
         if (mosaic_method=='lcf'):
 
             coll_data_dir = os.path.join(data_dir+'/'+collection_name)
@@ -719,8 +719,9 @@ def mosaic(name, data_dir, stac_url, collection, output_dir, start_year, start_m
                     for file in os.listdir(os.path.join(coll_data_dir, path, cloud)):
                         pixel_count = count_pixels_with_value(os.path.join(coll_data_dir, path, cloud_dict[collection]['cloud_band'], file), cloud_dict[collection]['non_cloud_values'][0]) #por região não total
                         date = file.split("_")[2].split('T')[0]
-                        cloud_list.append(dict(band=cloud, date=date, clean_percentage=float(pixel_count['count']/pixel_count['total']), scene=path, file=''))
-                        band_list.append(dict(band=bands[i], date=date, clean_percentage=float(pixel_count['count']/pixel_count['total']), scene=path, file=''))
+                        if (datetime.datetime.strptime(date, "%Y%m%d") >= datetime.datetime.strptime(start_date, "%Y-%m-%d") and datetime.datetime.strptime(date, "%Y%m%d") <= datetime.datetime.strptime(end_date, "%Y-%m-%d")):
+                            cloud_list.append(dict(band=cloud, date=date, clean_percentage=float(pixel_count['count']/pixel_count['total']), scene=path, file=''))
+                            band_list.append(dict(band=bands[i], date=date, clean_percentage=float(pixel_count['count']/pixel_count['total']), scene=path, file=''))
 
                 print(f"Building {bands[i]} mosaic using {len(scenes)} scenes from the {collection_name}.")
                 
