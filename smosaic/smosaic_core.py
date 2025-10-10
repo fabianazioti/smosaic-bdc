@@ -10,6 +10,7 @@ import datetime
 import importlib
 import numpy as np
 import pystac_client
+import multiprocessing
 
 from osgeo import gdal
 from shapely.ops import transform as shapely_transform
@@ -454,10 +455,10 @@ def merge_tifs(tif_files, output_path, band, path_row=None, extent=None):
     with rasterio.open(output_path, "w", **out_meta) as dest:
         dest.write(mosaic)
 
-    if(path_row):
-        print(f"Successfully merged {len(src_files_to_mosaic)} files for {path_row} scene.")
-    else:
-        print(f"Successfully merged {len(src_files_to_mosaic)} files.")
+    #if(path_row):
+        #print(f"Successfully merged {len(src_files_to_mosaic)} files for {path_row} scene.")
+    #else:
+        #print(f"Successfully merged {len(src_files_to_mosaic)} files.")
     
     for src in src_files_to_mosaic:
         src.close()
@@ -476,6 +477,7 @@ def merge_scene(sorted_data, cloud_sorted_data, scenes, collection_name, band, d
 
         images =  [item['file'] for item in sorted_data if item.get("scene") == scene]
         cloud_images = [item['file'] for item in cloud_sorted_data if item.get("scene") == scene]
+        
         temp_images = []
 
         for i in range(0, len(images)):
@@ -507,7 +509,7 @@ def merge_scene(sorted_data, cloud_sorted_data, scenes, collection_name, band, d
 
             with rasterio.open(os.path.join(data_dir, file_name), 'w', **profile) as dst:
                 dst.write(masked_image)
-
+    
         temp_images.append(images[0])
 
         output_file = os.path.join(data_dir, "merge_"+collection_name.split('-')[0]+"_"+scene+"_"+band+".tif")  
@@ -528,36 +530,28 @@ def merge_scene(sorted_data, cloud_sorted_data, scenes, collection_name, band, d
 
     return merge_files
 
-def geometry_collides_with_bbox(geometry,input_bbox):
-    """
-    Check if a Shapely geometry collides with a bounding box.
-    
-    Args:
-        geometry: A Shapely geometry object (Polygon, LineString, Point, etc.)
-        bbox: A tuple in (minx, miny, maxx, maxy) format
+def find_grid_by_name(grid_name):
+
+	bdc_grids_data = load_jsons("grids")
+
+	for grid in bdc_grids_data.get("grids", []):
+
+		if grid.get("name") == grid_name:
+
+			return grid
         
-    Returns:
-        bool: True if the geometry intersects with the bbox, False otherwise
-    """
+	return None
+
+def geometry_collides_with_bbox(geometry,input_bbox):
 
     bbox_polygon = shapely.geometry.box(*input_bbox)
-    
+
     return geometry.intersects(bbox_polygon)
-
-def filter_scenes(collection, data_dir, bbox):
-    """
-    Return scenes from data_dir where the geometry collides with the bounding box.
     
-    Args:
-        collection: A string with BDC collection id
-        data_dir: A string with directory
-        bbox: A tuple in (minx, miny, maxx, maxy) format
-        
-    Returns:
-        list: Scenes filtered by when geometry collides with the bounding box.
-    """
+def filter_scenes(collection, data_dir, bbox):
 
-    collection_metadata = json.load(open(os.path.join(data_dir, collection, str(collection+".json")), 'r', encoding='utf-8'))
+    if (collection == "S2_L2A-1"):
+        grid_data = find_grid_by_name("MGRS")
     
     list_dir = [item for item in os.listdir(os.path.join(data_dir, collection))
             if os.path.isdir(os.path.join(data_dir, collection, item))]
@@ -565,10 +559,10 @@ def filter_scenes(collection, data_dir, bbox):
     filtered_list = []
     
     for scene in list_dir:
-        item = [item for item in collection_metadata['geoms'] if item["tile"] == scene]
-        if (geometry_collides_with_bbox(shapely.geometry.shape(item[0]['geometry']), bbox)):
-            filtered_list.append(item[0]['tile'])   
-          
+        item = [item for item in grid_data["features"] if item["properties"]["name"] == scene]
+        if (geometry_collides_with_bbox(shapely.geometry.shape(item[0]["geometry"]), bbox)):
+            filtered_list.append(scene)
+
     return filtered_list
 
 def clean_dir(data_dir):
@@ -615,14 +609,13 @@ def mosaic(name, data_dir, stac_url, collection, output_dir, start_year, start_m
 
     stac = pystac_client.Client.open(stac_url)
 
-    if collection not in ['S2_L2A-1', 'S2-16D-2']:
+    if collection not in ['S2_L2A-1']: #'S2-16D-2'
         return print(f"{collection['collection']} collection not yet supported.")
+    
     #bbox
     if (bbox != None):
         tuple_bbox = tuple(map(float, bbox.split(',')))
         geom = shapely.geometry.box(*tuple_bbox)
-        bbox = geom.bounds
-
         bbox = geom.bounds
 
     start_date = datetime.datetime.strptime(str(start_year)+'-'+str(start_month)+'-'+str(start_day), "%Y-%m-%d")
@@ -641,10 +634,11 @@ def mosaic(name, data_dir, stac_url, collection, output_dir, start_year, start_m
         current_period_end = add_days_to_date(current_period_start, duration_days - 1)
         if current_period_end > end_date:
             current_period_end = end_date
-        periods.append({
-            'start': current_period_start.strftime("%Y-%m-%d"),
-            'end': current_period_end.strftime("%Y-%m-%d")
-        })
+        if current_period_start.strftime("%Y-%m-%d") != current_period_end.strftime("%Y-%m-%d"):
+            periods.append({
+                'start': current_period_start.strftime("%Y-%m-%d"),
+                'end': current_period_end.strftime("%Y-%m-%d")
+            })
         current_period_start = add_days_to_date(current_period_start, duration_days)
 
     dict_collection=collection_query(
@@ -658,95 +652,109 @@ def mosaic(name, data_dir, stac_url, collection, output_dir, start_year, start_m
     collection_name = dict_collection['collection']
 
     collection_get_data(stac, dict_collection, data_dir=data_dir)
-
-    for period in periods:
-
-        start_date = period['start']
-        end_date = period['end']
         
-        if (mosaic_method=='lcf'):
+    num_processes = multiprocessing.cpu_count()
+    print(f"--- Starting parallel processing with {num_processes} processes. ---\n")
+    
+    args_for_processes = [
+        (period, mosaic_method, data_dir, collection_name, bands, bbox, output_dir, duration_days, duration_months, name, geom) for period in periods
+    ]
 
-            coll_data_dir = os.path.join(data_dir+'/'+collection_name)
+    with multiprocessing.Pool(processes=num_processes) as pool:
+        results = pool.starmap(process_period, args_for_processes)
 
-            for i in range(len(bands)):
+    clean_dir(data_dir)
 
-                if (i==0):
-                    bands_cloud = [bands[i]] + [cloud_dict[collection_name]['cloud_band']]
-                    cloud_list = []   
-                else:
-                    bands_cloud = [bands[i]] 
-                
-                band_list = []             
-                sorted_data = []
+def process_period(period, mosaic_method, data_dir, collection_name, bands, bbox, output_dir, duration_days, duration_months, name, geom):
+    
+    start_date = period['start']
+    end_date = period['end']
 
-                scenes = filter_scenes(collection_name, data_dir, bbox)
+    process_id = os.getpid()
+    
+    print(f"[Process {process_id}] Starting to process period: {start_date} to {end_date}\n")
+    
+    if (mosaic_method=='lcf'):
 
-                cloud = cloud_dict[collection]['cloud_band']
+        coll_data_dir = os.path.join(data_dir+'/'+collection_name)
 
-                for path in scenes:
+        for i in range(len(bands)):
+
+            if (i==0):
+                bands_cloud = [bands[i]] + [cloud_dict[collection_name]['cloud_band']]
+                cloud_list = []   
+            else:
+                bands_cloud = [bands[i]] 
+            
+            band_list = []             
+            sorted_data = []
+
+            scenes = filter_scenes(collection_name, data_dir, bbox)
+
+            cloud = cloud_dict[collection_name]['cloud_band']
+
+            for path in scenes:
+                filtered_files = [
+                    f for f in os.listdir(os.path.join(coll_data_dir, path, cloud))
+                    if (datetime.datetime.strptime(f.split("_")[2].split('T')[0], "%Y%m%d") >= datetime.datetime.strptime(start_date, "%Y-%m-%d") and datetime.datetime.strptime(f.split("_")[2].split('T')[0], "%Y%m%d") <= datetime.datetime.strptime(end_date, "%Y-%m-%d"))
+                ]
+                for file in filtered_files:
+                    date = datetime.datetime.strptime(file.split("_")[2].split('T')[0], "%Y%m%d")
+                    pixel_count = count_pixels_with_value(os.path.join(coll_data_dir, path, cloud_dict[collection_name]['cloud_band'], file), cloud_dict[collection_name]['non_cloud_values'][0]) #por região não total
+                    cloud_list.append(dict(band=cloud, date=date.strftime("%Y%m%d"), clean_percentage=float(pixel_count['count']/pixel_count['total']), scene=path, file=''))
+                    band_list.append(dict(band=bands[i], date=date.strftime("%Y%m%d"), clean_percentage=float(pixel_count['count']/pixel_count['total']), scene=path, file=''))
+    
+            #print(f"Building {bands[i]} mosaic using {len(scenes)} scenes from the {collection_name}.")
+
+            files_list = []
+
+            for path in scenes:
+                for band in bands_cloud:
                     filtered_files = [
-                        f for f in os.listdir(os.path.join(coll_data_dir, path, cloud))
+                        f for f in os.listdir(os.path.join(coll_data_dir, path, band))
                         if (datetime.datetime.strptime(f.split("_")[2].split('T')[0], "%Y%m%d") >= datetime.datetime.strptime(start_date, "%Y-%m-%d") and datetime.datetime.strptime(f.split("_")[2].split('T')[0], "%Y%m%d") <= datetime.datetime.strptime(end_date, "%Y-%m-%d"))
                     ]
                     for file in filtered_files:
-                        date = datetime.datetime.strptime(file.split("_")[2].split('T')[0], "%Y%m%d")
-                        pixel_count = count_pixels_with_value(os.path.join(coll_data_dir, path, cloud_dict[collection]['cloud_band'], file), cloud_dict[collection]['non_cloud_values'][0]) #por região não total
-                        cloud_list.append(dict(band=cloud, date=date.strftime("%Y%m%d"), clean_percentage=float(pixel_count['count']/pixel_count['total']), scene=path, file=''))
-                        band_list.append(dict(band=bands[i], date=date.strftime("%Y%m%d"), clean_percentage=float(pixel_count['count']/pixel_count['total']), scene=path, file=''))
-     
-                print(f"Building {bands[i]} mosaic using {len(scenes)} scenes from the {collection_name}.")
+                        files_list.append(dict(file=os.path.join(coll_data_dir, path, band, file)))
+    
+            band_lookup, cloud_lookup = {}, {}
+            for f in files_list:
+                path = f['file']
+                parts = os.path.basename(path).split('_')
+                date, scene = parts[2].split('T')[0], parts[5].lstrip('T')
+                band_lookup[(parts[1], date, scene)] = path
+                cloud_lookup[(date, scene)] = path
 
-                files_list = []
+            for item in band_list:
+                item['file'] = band_lookup.get((item['band'], item['date'], item['scene']), '')
 
-                for path in scenes:
-                    for band in bands_cloud:
-                        filtered_files = [
-                            f for f in os.listdir(os.path.join(coll_data_dir, path, band))
-                            if (datetime.datetime.strptime(f.split("_")[2].split('T')[0], "%Y%m%d") >= datetime.datetime.strptime(start_date, "%Y-%m-%d") and datetime.datetime.strptime(f.split("_")[2].split('T')[0], "%Y%m%d") <= datetime.datetime.strptime(end_date, "%Y-%m-%d"))
-                        ]
-                        for file in filtered_files:
-                            files_list.append(dict(file=os.path.join(coll_data_dir, path, band, file)))
-        
-                band_lookup, cloud_lookup = {}, {}
-                for f in files_list:
-                    path = f['file']
-                    parts = os.path.basename(path).split('_')
-                    date, scene = parts[2].split('T')[0], parts[5].lstrip('T')
-                    band_lookup[(parts[1], date, scene)] = path
-                    cloud_lookup[(date, scene)] = path
+            for item in cloud_list:
+                item['file'] = cloud_lookup.get((item['date'], item['scene']), '')
 
-                for item in band_list:
-                    item['file'] = band_lookup.get((item['band'], item['date'], item['scene']), '')
+            sorted_data = sorted(band_list, key=lambda x: x['clean_percentage'], reverse=True)
+            
+            cloud_sorted_data = sorted(cloud_list, key=lambda x: x['clean_percentage'], reverse=True)
 
-                for item in cloud_list:
-                    item['file'] = cloud_lookup.get((item['date'], item['scene']), '')
+            lcf_list = merge_scene(sorted_data, cloud_sorted_data, scenes, collection_name, bands[i], data_dir)
 
-                sorted_data = sorted(band_list, key=lambda x: x['clean_percentage'], reverse=True)
-                
-                cloud_sorted_data = sorted(cloud_list, key=lambda x: x['clean_percentage'], reverse=True)
+            band = bands[i]
 
-                lcf_list = merge_scene(sorted_data, cloud_sorted_data, scenes, collection_name, bands[i], data_dir)
+            if not os.path.exists(output_dir):
+                os.makedirs(output_dir)
+            
+            if (duration_months):
+                file_name = "mosaic-"+collection_name.split("-")[0].lower()+"-"+name.lower()+"-"+str(duration_months)+"m"+"-"+bands[i].lower()+"-"+str(start_date).replace("-", "")+'_'+str(end_date).replace("-", "")
+            elif (duration_days):
+                file_name = "mosaic-"+collection_name.split("-")[0].lower()+"-"+name.lower()+"-"+str(duration_days)+"d"+"-"+bands[i].lower()+"-"+str(start_date).replace("-", "")+'_'+str(end_date).replace("-", "")
 
-                band = bands[i]
+            output_file = os.path.join(output_dir, "raw-"+file_name+".tif")  
+            
+            datasets = [rasterio.open(file) for file in lcf_list]        
+            
+            extents = get_dataset_extents(datasets)
+            
+            merge_tifs(tif_files=lcf_list, output_path=output_file, band=band, path_row=name, extent=extents)
 
-                if not os.path.exists(output_dir):
-                    os.makedirs(output_dir)
-                
-                if (duration_months):
-                    file_name = "mosaic-"+collection_name.split("-")[0].lower()+"-"+name.lower()+"-"+str(duration_months)+"m"+"-"+bands[i].lower()+"-"+str(start_date).replace("-", "")+'_'+str(end_date).replace("-", "")
-                elif (duration_days):
-                    file_name = "mosaic-"+collection_name.split("-")[0].lower()+"-"+name.lower()+"-"+str(duration_days)+"d"+"-"+bands[i].lower()+"-"+str(start_date).replace("-", "")+'_'+str(end_date).replace("-", "")
-
-                output_file = os.path.join(output_dir, "raw-"+file_name+".tif")  
-                
-                datasets = [rasterio.open(file) for file in lcf_list]        
-                
-                extents = get_dataset_extents(datasets)
-                
-                merge_tifs(tif_files=lcf_list, output_path=output_file, band=band, path_row=name, extent=extents)
-
-                clip_raster(input_raster_path=output_file, output_folder=output_dir, clip_geometry=geom,output_filename=file_name+".tif")
-                
-                generate_cog(input_folder=output_dir, input_filename=file_name, compress='LZW')
-
-                clean_dir(data_dir)
+            clip_raster(input_raster_path=output_file, output_folder=output_dir, clip_geometry=geom,output_filename=file_name+".tif")
+            
+            generate_cog(input_folder=output_dir, input_filename=file_name, compress='LZW')
