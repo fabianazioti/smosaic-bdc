@@ -19,11 +19,23 @@
 Changes
 =======
 
+0.2.0 (2025-10-10)
+------------------
+
+* **Multi-band Support**: It is now possible to create an mosaic with more than one band.
+* **Refactored Library Code**: Adjusted imports and the use of libraries in the code, removing imports of individual functions.
+* **New Notebooks**: Added several example notebooks:
+    * ``smosaic-introduction.ipynb``: A complete example of creating a Sentinel-2 multi-band mosaic for Luis Eduardo Magalhaes - BA.
+    * ``smosaic-data-cube.ipynb``: A complete example of creating a Sentinel-2 10 days data cube for a given bbox.
+* **Data Cube Support**:  Added support for data cube generation using ``end_year``, ``end_month``, ``end_day`` and ``duration_days`` parameters.
+* **Refactor filter_scenes Function**: Completely refactored ``filter_scenes`` function now use the grid geometry instead of the colleciton.json file.
+- **Implemented parallel processing**: to significantly speed up mosaic generation by processing multiple time steps concurrently.✨
+
 
 Version 0.0.1 (2025-06-04)
 ------------------
 
 * **Initial Release**: First implementation of ``mosaic`` function, with ``collection_get_data``, ``get_dataset_extents``, ``merge_tifs`` and ``clip_raster`` functions.
-* Completed the smosaic introduction notebook.
+* Completed the smosaic exemple notebook.
 * **Sentinel 2**: Added full support for Sentinel 2 data.  🛰️
 * **COG Support**: Added output as Cloud Optimized GeoTIFFs (COGs) with RasterIO. 
