@@ -22,7 +22,7 @@ Changes
 0.2.0 (2025-10-10)
 ------------------
 
-* **Multi-band Support**: It is now possible to create an ``xarray`` data cube with more than one band.
+* **Multi-band Support**: It is now possible to create an mosaic with more than one band.
 * **Refactored Library Code**: Adjusted imports and the use of libraries in the code, removing imports of individual functions.
 * **New Notebooks**: Added several example notebooks:
     * ``smosaic-introduction.ipynb``: A complete example of creating a Sentinel-2 multi-band mosaic for Luis Eduardo Magalhaes - BA.
