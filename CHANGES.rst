@@ -19,10 +19,10 @@
 Changes
 =======
 
-0.2.3 (2025-10-18)
+0.2.5 (2025-10-18)
 ------------------
 
-* **Fix**: Resolved an import error with `numpy`, `pyproj`, `shapely`, `requests`, `GDAL`, `rasterio` and `pystac-client` modules.
+* **Fix**: Resolved an import error with `numpy`, `pyproj`, `shapely`, `requests`, `rasterio` and `pystac-client` modules.
 
 
 0.2.2 (2025-10-15)

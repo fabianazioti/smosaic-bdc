@@ -29,9 +29,8 @@ setup(
         "pyproj==3.7.2",
         "shapely==2.1.2",
         "requests==2.32.5",
-        "GDAL==3.11.4",
         "rasterio==1.4.3",
-        "pystac-client==0.9.0",
+        "pystac-client==0.9.0"
     ],
     long_description = LONG_DESCRIPTION,
     setup_requires=['pytest-runner'],
