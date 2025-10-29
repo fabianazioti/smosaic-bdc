@@ -26,7 +26,7 @@ Changes
 * **Breaking Changes**: 
   - All functions now distributed across dedicated modules (smosaic_clip_raster, smosaic_merge_scene, etc.)
   - Update imports to reference new modules (e.g., `from smosaic_clip_raster import clip_raster`)
-
+* **Enhanced Mosaic Function**: Added support for monthly periods, with proper date handling.
 
 0.2.5 (2025-10-18)
 ------------------

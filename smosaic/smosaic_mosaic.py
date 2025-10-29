@@ -2,6 +2,7 @@ import os
 import shapely
 import rasterio
 import datetime
+import dateutil
 import pystac_client
 import multiprocessing
 
@@ -60,6 +61,17 @@ def mosaic(name, data_dir, stac_url, collection, output_dir, start_year, start_m
                 'end': current_end_date.strftime("%Y-%m-%d")
             })
             current_start_date += datetime.timedelta(days=duration_days)
+    elif duration_months:
+        while current_start_date <= end_date:
+            current_end_date = current_start_date + dateutil.relativedelta.relativedelta(months=duration_months) - dateutil.relativedelta.relativedelta(days=1)
+
+            if current_end_date > end_date:
+                current_end_date = end_date
+            periods.append({
+                'start': current_start_date.strftime("%Y-%m-%d"),
+                'end': current_end_date.strftime("%Y-%m-%d")
+            })
+            current_start_date = current_start_date + dateutil.relativedelta.relativedelta(months=duration_months)
     else:
         periods.append({
             'start': start_date.strftime("%Y-%m-%d"),
