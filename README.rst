@@ -15,7 +15,7 @@
     You should have received a copy of the GNU General Public License
     along with this program. If not, see <https://www.gnu.org/licenses/gpl-3.0.html>.
 
-.. image:: docs/img/smosaic_logo.png
+.. image:: https://raw.githubusercontent.com/GSansigolo/smosaic/main/docs/img/smosaic_logo.png
    :width: 350
    :align: center
    :alt: smosaic logo
