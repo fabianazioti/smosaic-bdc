@@ -29,6 +29,8 @@ Changes
   - ``ctd``: Closest to reference date (new)
   - ``crono``: Chronological order (new)
 * **New Utility Function**: Added ``days_between_dates()`` function in utils module for date interval calculations
+* **New Notebook**: Added example notebook:
+    * ``smosaic-closest-to-date.ipynb``: A complete example of creating Sentinel-2 image mosaic by selecting images closest to a reference date
 
 
 0.3.0 (2025-10-31)
