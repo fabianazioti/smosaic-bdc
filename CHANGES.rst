@@ -19,6 +19,18 @@
 Changes
 =======
 
+0.4.0 (2025-11-10)
+------------------
+* **New Mosaic Build Methods**: Added two new scene ordering functions for mosaic generation:
+  - ``ctd`` (Closest to Date): Build mosaics by selecting images closest to a reference date
+  - ``crono`` (Chronological): Build mosaics by ordering scenes by acquisition date
+* **Enhanced Mosaic Function**: The ``mosaic()`` function now supports three build methods:
+  - ``lcf``: Least cloud cover first (existing)
+  - ``ctd``: Closest to reference date (new)
+  - ``crono``: Chronological order (new)
+* **New Utility Function**: Added ``days_between_dates()`` function in utils module for date interval calculations
+
+
 0.3.0 (2025-10-31)
 ------------------
 
@@ -29,6 +41,7 @@ Changes
 * **Enhanced Mosaic Function**: Added support for monthly periods, with proper date handling.
 * **New Notebook**: Added example notebook:
     * ``smosaic-monitoring-expansion-favelas-sp.ipynb``: A complete example of creating monthly Sentinel-2 image mosaics for monitoring the expansion of favelas in São Paulo.
+
 
 0.2.5 (2025-10-18)
 ------------------

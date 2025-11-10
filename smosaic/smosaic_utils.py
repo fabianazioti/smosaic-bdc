@@ -137,6 +137,23 @@ def add_months_to_date(start_date, months_to_add):
     return target_date + dateutil.relativedelta.relativedelta(day=31)
 
 
+def days_between_dates(date1, date2):
+    """
+    Calculate the number of days between two dates.
+    
+    Args:
+        date1 (str): First date in 'YYYY-MM-DD' format
+        date2 (str): Second date in 'YYYY-MM-DD' format
+    
+    Returns:
+        int: Number of days between the two dates (positive if date2 is after date1, negative if date2 is before date1)
+    """
+    d1 = datetime.datetime.strptime(date1, '%Y-%m-%d')
+    d2 = datetime.datetime.strptime(date2, '%Y%m%d')
+    
+    return abs((d2 - d1).days)
+
+
 def add_days_to_date(start_date, days_to_add):
     """
     Add a specified number of days to a given date.
