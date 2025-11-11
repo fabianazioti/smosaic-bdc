@@ -11,4 +11,5 @@ conda install -c conda-forge shapely=2.1.2 -y
 conda install -c conda-forge requests=2.32.5 -y
 conda install -c conda-forge rasterio=1.4.3 -y
 conda install -c conda-forge pystac-client=0.9.0 -y
+conda install -c conda-forge build -y
 
