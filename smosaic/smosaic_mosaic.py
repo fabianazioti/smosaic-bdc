@@ -13,7 +13,7 @@ from smosaic.smosaic_count_pixels import count_pixels
 from smosaic.smosaic_filter_scenes import filter_scenes
 from smosaic.smosaic_generate_cog import generate_cog
 from smosaic.smosaic_get_dataset_extents import get_dataset_extents
-from smosaic.smosaic_merge_scene import merge_scene
+from smosaic.smosaic_merge_scene import merge_scene, merge_scene_provenance_cloud
 from smosaic.smosaic_merge_tifs import merge_tifs
 from smosaic.smosaic_utils import add_days_to_date, add_months_to_date, clean_dir, days_between_dates, get_all_cloud_configs
 
@@ -181,7 +181,10 @@ def process_period(period, mosaic_method, data_dir, collection_name, bands, bbox
             
             cloud_sorted_data = sorted(cloud_list, key=lambda x: x['clean_percentage'], reverse=True)
 
-            ordered_list = merge_scene(sorted_data, cloud_sorted_data, scenes, collection_name, bands[i], data_dir)
+            if (i==0):
+                ordered_lists = merge_scene_provenance_cloud(sorted_data, cloud_sorted_data, scenes, collection_name, bands[i], data_dir)
+            else:
+                ordered_lists = merge_scene(sorted_data, cloud_sorted_data, scenes, collection_name, bands[i], data_dir)
 
         if (mosaic_method=='crono'):
 
@@ -189,7 +192,10 @@ def process_period(period, mosaic_method, data_dir, collection_name, bands, bbox
 
             cloud_sorted_data = sorted(cloud_list, key=lambda x: x['date'])
 
-            ordered_list = merge_scene(sorted_data, cloud_sorted_data, scenes, collection_name, bands[i], data_dir)
+            if (i==0):
+                ordered_lists = merge_scene_provenance_cloud(sorted_data, cloud_sorted_data, scenes, collection_name, bands[i], data_dir)
+            else:
+                ordered_lists = merge_scene(sorted_data, cloud_sorted_data, scenes, collection_name, bands[i], data_dir)
 
         if (mosaic_method=='ctd'):
 
@@ -197,8 +203,11 @@ def process_period(period, mosaic_method, data_dir, collection_name, bands, bbox
             
             cloud_sorted_data = sorted(cloud_list, key=lambda x: x['distance_days'])
 
-            ordered_list = merge_scene(sorted_data, cloud_sorted_data, scenes, collection_name, bands[i], data_dir)
-    
+            if (i==0):
+                ordered_lists = merge_scene_provenance_cloud(sorted_data, cloud_sorted_data, scenes, collection_name, bands[i], data_dir)
+            else:
+                ordered_lists = merge_scene(sorted_data, cloud_sorted_data, scenes, collection_name, bands[i], data_dir)
+
         band = bands[i]
 
         if not os.path.exists(output_dir):
@@ -209,14 +218,23 @@ def process_period(period, mosaic_method, data_dir, collection_name, bands, bbox
         elif (duration_days):
             file_name = "mosaic-"+collection_name.split("-")[0].lower()+"-"+name.lower()+"-"+str(duration_days)+"d"+"-"+bands[i].lower()+"-"+str(start_date).replace("-", "")+'_'+str(end_date).replace("-", "")
 
-        output_file = os.path.join(output_dir, "raw-"+file_name+".tif")  
+        output_file = os.path.join(output_dir, "raw-"+file_name+".tif")
+
+        if (i==0):
+            provenance_output_file = os.path.join(output_dir, "provenance_raw-"+file_name+".tif")  
         
-        datasets = [rasterio.open(file) for file in ordered_list]        
+        datasets = [rasterio.open(file) for file in  ordered_lists['merge_files']]        
         
         extents = get_dataset_extents(datasets)
         
-        merge_tifs(tif_files=ordered_list, output_path=output_file, band=band, path_row=name, extent=extents)
+        merge_tifs(tif_files= ordered_lists['merge_files'], output_path=output_file, band=band, path_row=name, extent=extents)
+        if (i==0):
+            merge_tifs(tif_files=ordered_lists['provenance_merge_files'], output_path=provenance_output_file, band=band, path_row=name, extent=extents)
 
-        clip_raster(input_raster_path=output_file, output_folder=output_dir, clip_geometry=geom,output_filename=file_name+".tif")
+        clip_raster(input_raster_path=output_file, output_folder=output_dir, clip_geometry=geom, output_filename=file_name+".tif")
+        if (i==0):
+            clip_raster(input_raster_path=provenance_output_file, output_folder=output_dir, clip_geometry=geom, output_filename=file_name.replace("-"+bands[i].lower()+"-", "-provenance-")+".tif")
         
         generate_cog(input_folder=output_dir, input_filename=file_name, compress='LZW')
+        if (i==0):
+            generate_cog(input_folder=output_dir, input_filename=file_name.replace("-"+bands[i].lower()+"-", "-provenance-"), compress='LZW')
