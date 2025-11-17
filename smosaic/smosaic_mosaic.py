@@ -1,4 +1,5 @@
 import os
+import json
 import shapely
 import rasterio
 import datetime
@@ -11,9 +12,10 @@ from smosaic.smosaic_collection_get_data import collection_get_data
 from smosaic.smosaic_collection_query import collection_query
 from smosaic.smosaic_count_pixels import count_pixels
 from smosaic.smosaic_filter_scenes import filter_scenes
+from smosaic.smosaic_fix_baseline_number import fix_baseline_number
 from smosaic.smosaic_generate_cog import generate_cog
 from smosaic.smosaic_get_dataset_extents import get_dataset_extents
-from smosaic.smosaic_merge_scene import merge_scene
+from smosaic.smosaic_merge_scene import merge_scene, merge_scene_provenance_cloud
 from smosaic.smosaic_merge_tifs import merge_tifs
 from smosaic.smosaic_utils import add_days_to_date, add_months_to_date, clean_dir, days_between_dates, get_all_cloud_configs
 
@@ -43,7 +45,7 @@ def mosaic(name, data_dir, stac_url, collection, output_dir, start_year, start_m
     elif duration_months is not None:
         end_date = add_months_to_date(start_date,duration_months-1)
     elif duration_days is not None and not any([end_year, end_month, end_day, duration_months]):
-        end_date = add_days_to_date(start_date,duration_days)
+        end_date = add_days_to_date(start_date,duration_days-1)
     
     if end_date is None:
         return print("Not provided with a valid time interval.")
@@ -54,12 +56,14 @@ def mosaic(name, data_dir, stac_url, collection, output_dir, start_year, start_m
     if duration_days:
         while current_start_date <= end_date:
             current_end_date = add_days_to_date(current_start_date,duration_days-1)
+
             if current_end_date > end_date:
                 current_end_date = end_date
-            periods.append({
-                'start': current_start_date.strftime("%Y-%m-%d"),
-                'end': current_end_date.strftime("%Y-%m-%d")
-            })
+            if current_start_date != current_end_date:
+                periods.append({
+                    'start': current_start_date.strftime("%Y-%m-%d"),
+                    'end': current_end_date.strftime("%Y-%m-%d")
+                })
             current_start_date += datetime.timedelta(days=duration_days)
     elif duration_months:
         while current_start_date <= end_date:
@@ -67,10 +71,11 @@ def mosaic(name, data_dir, stac_url, collection, output_dir, start_year, start_m
 
             if current_end_date > end_date:
                 current_end_date = end_date
-            periods.append({
-                'start': current_start_date.strftime("%Y-%m-%d"),
-                'end': current_end_date.strftime("%Y-%m-%d")
-            })
+            if current_start_date != current_end_date:
+                periods.append({
+                    'start': current_start_date.strftime("%Y-%m-%d"),
+                    'end': current_end_date.strftime("%Y-%m-%d")
+                })
             current_start_date = current_start_date + dateutil.relativedelta.relativedelta(months=duration_months)
     else:
         periods.append({
@@ -104,7 +109,7 @@ def mosaic(name, data_dir, stac_url, collection, output_dir, start_year, start_m
 
 
 def process_period(period, mosaic_method, data_dir, collection_name, bands, bbox, output_dir, duration_days, duration_months, name, geom, reference_date):
-    
+
     start_date = period['start']
     end_date = period['end']
 
@@ -114,17 +119,15 @@ def process_period(period, mosaic_method, data_dir, collection_name, bands, bbox
     
     coll_data_dir = os.path.join(data_dir+'/'+collection_name)
 
-    for i in range(len(bands)):
+    for i in range(0, len(bands)):
 
-        if (i==0):
-            cloud_dict = get_all_cloud_configs()
-            bands_cloud = [bands[i]] + [cloud_dict[collection_name]['cloud_band']]
-            cloud_list = []   
-        else:
-            bands_cloud = [bands[i]] 
-        
+        cloud_dict = get_all_cloud_configs()
+
+        cloud_list = []   
         band_list = []             
         sorted_data = []
+
+        bands_cloud = [bands[i]] + [cloud_dict[collection_name]['cloud_band']]
 
         scenes = filter_scenes(collection_name, data_dir, bbox)
 
@@ -142,13 +145,10 @@ def process_period(period, mosaic_method, data_dir, collection_name, bands, bbox
                     pixel_count = count_pixels(os.path.join(coll_data_dir, path, cloud_dict[collection_name]['cloud_band'], file), cloud_dict[collection_name]['non_cloud_values'][0]) #por região não total
                     cloud_list.append(dict(band=cloud, date=date.strftime("%Y%m%d"), distance_days=distance_days, clean_percentage=float(pixel_count['count']/pixel_count['total']), scene=path, file=''))
                     band_list.append(dict(band=bands[i], date=date.strftime("%Y%m%d"), distance_days=distance_days, clean_percentage=float(pixel_count['count']/pixel_count['total']), scene=path, file=''))
-
                 else:
                     pixel_count = count_pixels(os.path.join(coll_data_dir, path, cloud_dict[collection_name]['cloud_band'], file), cloud_dict[collection_name]['non_cloud_values'][0]) #por região não total
                     cloud_list.append(dict(band=cloud, date=date.strftime("%Y%m%d"), clean_percentage=float(pixel_count['count']/pixel_count['total']), scene=path, file=''))
                     band_list.append(dict(band=bands[i], date=date.strftime("%Y%m%d"), clean_percentage=float(pixel_count['count']/pixel_count['total']), scene=path, file=''))
-
-        #print(f"Building {bands[i]} mosaic using {len(scenes)} scenes from the {collection_name}.")
 
         files_list = []
 
@@ -178,45 +178,63 @@ def process_period(period, mosaic_method, data_dir, collection_name, bands, bbox
         if (mosaic_method=='lcf'):
 
             sorted_data = sorted(band_list, key=lambda x: x['clean_percentage'], reverse=True)
-            
+
             cloud_sorted_data = sorted(cloud_list, key=lambda x: x['clean_percentage'], reverse=True)
-
-            ordered_list = merge_scene(sorted_data, cloud_sorted_data, scenes, collection_name, bands[i], data_dir)
-
+            
         if (mosaic_method=='crono'):
 
             sorted_data = sorted(band_list, key=lambda x: x['date'])
 
             cloud_sorted_data = sorted(cloud_list, key=lambda x: x['date'])
 
-            ordered_list = merge_scene(sorted_data, cloud_sorted_data, scenes, collection_name, bands[i], data_dir)
-
         if (mosaic_method=='ctd'):
 
             sorted_data = sorted(band_list, key=lambda x: x['distance_days'])
-            
+
             cloud_sorted_data = sorted(cloud_list, key=lambda x: x['distance_days'])
 
-            ordered_list = merge_scene(sorted_data, cloud_sorted_data, scenes, collection_name, bands[i], data_dir)
-    
+        if (i==0):
+            ordered_lists = merge_scene_provenance_cloud(sorted_data, cloud_sorted_data, scenes, collection_name, bands[i], data_dir)
+        else:
+            ordered_lists = merge_scene(sorted_data, cloud_sorted_data, scenes, collection_name, bands[i], data_dir)
+
+        filename = sorted_data[0]['file'].split('/')[-1]
+        baseline_number = filename.split("_N")[1][0:4]
+        
         band = bands[i]
 
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
         
         if (duration_months):
-            file_name = "mosaic-"+collection_name.split("-")[0].lower()+"-"+name.lower()+"-"+str(duration_months)+"m"+"-"+bands[i].lower()+"-"+str(start_date).replace("-", "")+'_'+str(end_date).replace("-", "")
+            file_name = "mosaic-"+collection_name.split("-")[0].lower()+"-"+name.lower()+"-"+str(duration_months)+"m"+"-"+bands[i]+"-"+str(start_date).replace("-", "")+'_'+str(end_date).replace("-", "")
         elif (duration_days):
-            file_name = "mosaic-"+collection_name.split("-")[0].lower()+"-"+name.lower()+"-"+str(duration_days)+"d"+"-"+bands[i].lower()+"-"+str(start_date).replace("-", "")+'_'+str(end_date).replace("-", "")
+            file_name = "mosaic-"+collection_name.split("-")[0].lower()+"-"+name.lower()+"-"+str(duration_days)+"d"+"-"+bands[i]+"-"+str(start_date).replace("-", "")+'_'+str(end_date).replace("-", "")
 
-        output_file = os.path.join(output_dir, "raw-"+file_name+".tif")  
+        output_file = os.path.join(output_dir, "raw-"+file_name+".tif")
+
+        if (i==0):
+            provenance_output_file = os.path.join(output_dir, "provenance_raw-"+file_name+".tif")  
+            cloud_data_output_file = os.path.join(output_dir, "cloud_data_raw-"+file_name+".tif") 
         
-        datasets = [rasterio.open(file) for file in ordered_list]        
+        datasets = [rasterio.open(file) for file in  ordered_lists['merge_files']]        
         
         extents = get_dataset_extents(datasets)
-        
-        merge_tifs(tif_files=ordered_list, output_path=output_file, band=band, path_row=name, extent=extents)
 
-        clip_raster(input_raster_path=output_file, output_folder=output_dir, clip_geometry=geom,output_filename=file_name+".tif")
+
+        merge_tifs(tif_files= ordered_lists['merge_files'], output_path=output_file, band=band, path_row=name, extent=extents)
+        if (i==0):
+            merge_tifs(tif_files=ordered_lists['provenance_merge_files'], output_path=provenance_output_file, band=band, path_row=name, extent=extents)
+            merge_tifs(tif_files=ordered_lists['cloud_merge_files'], output_path=cloud_data_output_file, band=band, path_row=name, extent=extents)
+
+        clip_raster(input_raster_path=output_file, output_folder=output_dir, clip_geometry=geom, output_filename=file_name+".tif")
+        if (i==0):
+            clip_raster(input_raster_path=provenance_output_file, output_folder=output_dir, clip_geometry=geom, output_filename=file_name.replace("-"+bands[i]+"-", "-PROVENANCE-")+".tif")
+            clip_raster(input_raster_path=cloud_data_output_file, output_folder=output_dir, clip_geometry=geom, output_filename=file_name.replace("-"+bands[i]+"-", "-"+cloud_dict[collection_name]['cloud_band']+"-")+".tif")
         
+        fix_baseline_number(input_folder=output_dir, input_filename=file_name, baseline_number=baseline_number)
+
         generate_cog(input_folder=output_dir, input_filename=file_name, compress='LZW')
+        if (i==0):
+            generate_cog(input_folder=output_dir, input_filename=file_name.replace("-"+bands[i]+"-", "-PROVENANCE-"), compress='LZW')
+            generate_cog(input_folder=output_dir, input_filename=file_name.replace("-"+bands[i]+"-", "-"+cloud_dict[collection_name]['cloud_band']+"-"), compress='LZW')
