@@ -19,6 +19,13 @@
 Changes
 =======
 
+0.5.1 (2025-11-XX)
+------------------
+
+* **Standardized Output Resolution**: Added new ``reproject_tif()`` function that ensures all output mosaics maintain consistent 10,-10 pixel size
+* **Projection Consistency**: All output mosaics now maintain uniform spatial reference system using the standardized Albers projection
+
+
 0.5.0 (2025-11-17)
 ------------------
 

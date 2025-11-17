@@ -17,6 +17,7 @@ from smosaic.smosaic_generate_cog import generate_cog
 from smosaic.smosaic_get_dataset_extents import get_dataset_extents
 from smosaic.smosaic_merge_scene import merge_scene, merge_scene_provenance_cloud
 from smosaic.smosaic_merge_tifs import merge_tifs
+from smosaic.smosaic_reproject_tif import reproject_tif
 from smosaic.smosaic_utils import add_days_to_date, add_months_to_date, clean_dir, days_between_dates, get_all_cloud_configs
 
 
@@ -221,7 +222,6 @@ def process_period(period, mosaic_method, data_dir, collection_name, bands, bbox
         
         extents = get_dataset_extents(datasets)
 
-
         merge_tifs(tif_files= ordered_lists['merge_files'], output_path=output_file, band=band, path_row=name, extent=extents)
         if (i==0):
             merge_tifs(tif_files=ordered_lists['provenance_merge_files'], output_path=provenance_output_file, band=band, path_row=name, extent=extents)
@@ -238,3 +238,8 @@ def process_period(period, mosaic_method, data_dir, collection_name, bands, bbox
         if (i==0):
             generate_cog(input_folder=output_dir, input_filename=file_name.replace("-"+bands[i]+"-", "-PROVENANCE-"), compress='LZW')
             generate_cog(input_folder=output_dir, input_filename=file_name.replace("-"+bands[i]+"-", "-"+cloud_dict[collection_name]['cloud_band']+"-"), compress='LZW')
+        
+        reproject_tif(input_folder=output_dir, input_filename=file_name)
+        if (i==0):
+            reproject_tif(input_folder=output_dir, input_filename=file_name.replace("-"+bands[i]+"-", "-PROVENANCE-"))
+            reproject_tif(input_folder=output_dir, input_filename=file_name.replace("-"+bands[i]+"-", "-"+cloud_dict[collection_name]['cloud_band']+"-"))
