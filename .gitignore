@@ -33,6 +33,13 @@ notebooks/temp_*
 notebooks/merge_*
 notebooks/provenance_*
 notebooks/cloud_*
+S2_L2A-1
+clear_*
+temp_*
+merge_*
+provenance_*
+cloud_*
+*.xml
 
 # PyInstaller
 #  Usually these files are written by a python script from a template

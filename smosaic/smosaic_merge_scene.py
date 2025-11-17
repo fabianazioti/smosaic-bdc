@@ -76,12 +76,6 @@ def merge_scene(sorted_data, cloud_sorted_data, scenes, collection_name, band, d
         for dataset in datasets:
             dataset.close()
 
-        for f in temp_images:
-            try:
-                os.remove(f)
-            except:
-                pass
-
     return dict(merge_files=merge_files)
 
 def merge_scene_provenance_cloud(sorted_data, cloud_sorted_data, scenes, collection_name, band, data_dir):
@@ -189,23 +183,5 @@ def merge_scene_provenance_cloud(sorted_data, cloud_sorted_data, scenes, collect
 
         for dataset in datasets:
             dataset.close()
-
-        for f in temp_images:
-            try:
-                os.remove(f)
-            except:
-                pass
-
-        for f in provenance_temp_images:
-            try:
-                os.remove(f)
-            except:
-                pass
-
-        for f in temp_cloud_images:
-            try:
-                os.remove(f)
-            except:
-                pass
 
     return dict(merge_files=merge_files, provenance_merge_files=provenance_merge_files, cloud_merge_files=cloud_merge_files)

@@ -19,6 +19,11 @@
 Changes
 =======
 
+0.5.0 (2025-11-17)
+------------------
+
+
+
 0.4.0 (2025-11-10)
 ------------------
 * **New Mosaic Build Methods**: Added two new scene ordering functions for mosaic generation:

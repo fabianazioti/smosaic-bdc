@@ -18,5 +18,5 @@ result = mosaic(
     end_year=2025,
     end_month=7,
     end_day=31,
-    bands=["B04","B02","B03"],
+    bands=["B02","B03","B04"],
 )
