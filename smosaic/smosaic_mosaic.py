@@ -21,7 +21,7 @@ from smosaic.smosaic_reproject_tif import reproject_tif
 from smosaic.smosaic_utils import add_days_to_date, add_months_to_date, clean_dir, days_between_dates, get_all_cloud_configs
 
 
-def mosaic(name, data_dir, stac_url, collection, output_dir, start_year, start_month, start_day, bands, mosaic_method, reference_date=None, duration_days=None, end_year=None, end_month=None, end_day=None, duration_months=None, geom=None, grid=None, grid_id=None, bbox=None):
+def mosaic(name, data_dir, stac_url, collection, output_dir, start_year, start_month, start_day, mosaic_method, bands=None, reference_date=None, duration_days=None, end_year=None, end_month=None, end_day=None, duration_months=None, geom=None, grid=None, grid_id=None, bbox=None, profile=None):
 
     stac = pystac_client.Client.open(stac_url)
 
@@ -84,6 +84,11 @@ def mosaic(name, data_dir, stac_url, collection, output_dir, start_year, start_m
             'end': end_date.strftime("%Y-%m-%d")
         })
         
+    if profile=="crop_condition":
+        bands = ["B02","B04","B08"]
+    elif profile=="urban_analysis":
+        bands = ["B02","B03","B04","B08","B11"]
+
     dict_collection=collection_query(
         collection=collection,
         start_date=start_date.strftime("%Y-%m-%d"),
