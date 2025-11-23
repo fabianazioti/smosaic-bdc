@@ -221,9 +221,9 @@ def process_period(period, mosaic_method, data_dir, collection_name, bands, bbox
             os.makedirs(output_dir)
         
         if (duration_months):
-            file_name = "mosaic-"+collection_name.split("-")[0].lower()+"-"+name.lower()+"-"+str(duration_months)+"m"+"-"+bands[i]+"-"+str(start_date).replace("-", "")+'_'+str(end_date).replace("-", "")
+            file_name = "mosaic-"+collection_name.split("-")[0].lower()+"-"+name.lower()+"-"+str(duration_months)+"m"+"-"+bands[i]+"_"+str(start_date).replace("-", "")+'_'+str(end_date).replace("-", "")
         elif (duration_days):
-            file_name = "mosaic-"+collection_name.split("-")[0].lower()+"-"+name.lower()+"-"+str(duration_days)+"d"+"-"+bands[i]+"-"+str(start_date).replace("-", "")+'_'+str(end_date).replace("-", "")
+            file_name = "mosaic-"+collection_name.split("-")[0].lower()+"-"+name.lower()+"-"+str(duration_days)+"d"+"-"+bands[i]+"_"+str(start_date).replace("-", "")+'_'+str(end_date).replace("-", "")
 
         output_file = os.path.join(output_dir, "raw-"+file_name+".tif")
 

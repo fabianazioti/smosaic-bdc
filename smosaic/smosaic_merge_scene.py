@@ -60,7 +60,7 @@ def merge_scene(sorted_data, cloud_sorted_data, scenes, collection_name, band, d
         
         temp_images.append(images[0])
 
-        output_file = os.path.join(data_dir, "merge_"+collection_name.split('-')[0]+"_"+scene+"_"+band+"-"+str(start_date).replace("-", "")+'_'+str(end_date).replace("-", "")+".tif")  
+        output_file = os.path.join(data_dir, "merge_"+collection_name.split('-')[0]+"_"+scene+"_"+band+"_"+str(start_date).replace("-", "")+'_'+str(end_date).replace("-", "")+".tif")  
 
         datasets = [rasterio.open(file) for file in temp_images]  
         
@@ -169,9 +169,9 @@ def merge_scene_provenance_cloud(sorted_data, cloud_sorted_data, scenes, collect
         provenance_temp_images.append(os.path.join(data_dir, first_provenance_file_name))
         temp_cloud_images.append(cloud_images[0])
 
-        output_file = os.path.join(data_dir, "merge_"+collection_name.split('-')[0]+"_"+scene+"_"+band+"-"+str(start_date).replace("-", "")+'_'+str(end_date).replace("-", "")+".tif")  
-        provenance_output_file = os.path.join(data_dir, "provenance_merge_"+collection_name.split('-')[0]+"_"+scene+"-"+str(start_date).replace("-", "")+'_'+str(end_date).replace("-", "")+".tif") 
-        cloud_output_file = os.path.join(data_dir, "cloud_merge_"+collection_name.split('-')[0]+"_"+scene+"-"+str(start_date).replace("-", "")+'_'+str(end_date).replace("-", "")+".tif") 
+        output_file = os.path.join(data_dir, "merge_"+collection_name.split('-')[0]+"_"+scene+"_"+band+"_"+str(start_date).replace("-", "")+'_'+str(end_date).replace("-", "")+".tif")  
+        provenance_output_file = os.path.join(data_dir, "provenance_merge_"+collection_name.split('-')[0]+"_"+scene+"_"+str(start_date).replace("-", "")+'_'+str(end_date).replace("-", "")+".tif") 
+        cloud_output_file = os.path.join(data_dir, "cloud_merge_"+collection_name.split('-')[0]+"_"+scene+"_"+str(start_date).replace("-", "")+'_'+str(end_date).replace("-", "")+".tif") 
 
         datasets = [rasterio.open(file) for file in temp_images]  
         
