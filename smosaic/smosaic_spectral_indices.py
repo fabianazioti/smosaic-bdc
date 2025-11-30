@@ -3,19 +3,19 @@ import re
 import subprocess
 
 def ndvi_calc(nir, red, compress='LZW'):
-    output_ndvi_file = nir.replace("-B08-", "-NDVI-")
+    output_ndvi_file = nir.replace("-B08_", "-NDVI-")
     os.system(f'gdal_calc.py -A {nir} -B {red} --outfile={output_ndvi_file} --calc="where((A+B)==0,-9999,(A-B)/(A+B))" --type=Float32 --NoDataValue=-9999 --co COMPRESS={compress} --co BIGTIFF=IF_SAFER')
 
 def evi_calc(nir, red, blue, compress='LZW'):
-    output_evi_file = nir.replace("-B08-", "-EVI-")
+    output_evi_file = nir.replace("-B08_", "-EVI-")
     os.system(f'gdal_calc.py -A {nir} -B {red} -C {blue} --outfile={output_evi_file} --calc="where((A + 6.0 * B - 7.5 * C + 1.0) == 0, -9999, 2.5 * (A - B) / (A + 6.0 * B - 7.5 * C + 1.0))" --type=Float32 --NoDataValue=-9999 --co COMPRESS={compress} --co BIGTIFF=IF_SAFER')
 
 def evi2_calc(nir, red, compress='LZW'):
-    output_evi2_file = nir.replace("-B08-", "-EVI2-")
+    output_evi2_file = nir.replace("-B08_", "-EVI2-")
     os.system(f'gdal_calc.py -A {nir} -B {red} --outfile={output_evi2_file} --calc="2.5 * where((A + 2.4 * B + 1.0) == 0, -9999, (A - B) / (A + 2.4 * B + 1.0))" --type=Float32 --NoDataValue=-9999 --co COMPRESS={compress} --co BIGTIFF=IF_SAFER')
 
 def savi_calc(nir, red, compress='LZW'):
-    output_savi_file = nir.replace("-B08-", "-SAVI-")
+    output_savi_file = nir.replace("-B08_", "-SAVI-")
     os.system(f'gdal_calc.py -A {nir} -B {red} --outfile={output_savi_file} --calc="where((A + B + 0.5) == 0, -9999, (1.5 * (A - B)) / (A + B + 0.5))" --type=Float32 --NoDataValue=-9999 --co COMPRESS={compress} --co BIGTIFF=IF_SAFER')
 
 def get_raster_dimensions(filename):
@@ -37,7 +37,7 @@ def get_raster_dimensions(filename):
 
 def ndbi_calc(band_1, band_2, compress='LZW'):
     
-    output_file = band_2.replace("-B08-", "-NDBI-")
+    output_file = band_2.replace("-B08_", "-NDBI-")
     
     dims_band_1 = get_raster_dimensions(band_1)
     dims_band_2 = get_raster_dimensions(band_2)
@@ -79,7 +79,7 @@ def ndbi_calc(band_1, band_2, compress='LZW'):
    
 def mndwi_calc(band_1, band_2, compress='LZW'):
     
-    output_file = band_2.replace("-B03-", "-MNDWI-")
+    output_file = band_2.replace("-B03_", "-MNDWI-")
     
     dims_band_1 = get_raster_dimensions(band_1)
     dims_band_2 = get_raster_dimensions(band_2)
@@ -123,13 +123,13 @@ def calculate_spectral_indices(input_folder: str, spectral_indices) -> str:
     for spectral_indice in spectral_indices:
 
         if spectral_indice == "NDVI":
-            pattern_nir = r'-B08-'
+            pattern_nir = r'-B08_'
             files_nir = [
                 os.path.join(input_folder, f) for f in os.listdir(input_folder)
                 if re.search(pattern_nir, f)
             ]
             
-            pattern_red = r'-B04-'
+            pattern_red = r'-B04_'
             files_red = [
                 os.path.join(input_folder, f) for f in os.listdir(input_folder)
                 if re.search(pattern_red, f)
@@ -139,19 +139,19 @@ def calculate_spectral_indices(input_folder: str, spectral_indices) -> str:
                 ndvi_calc(files_nir[i], files_red[i])
         
         if spectral_indice == "EVI":
-            pattern_nir = r'-B08-'
+            pattern_nir = r'-B08_'
             files_nir = [
                 os.path.join(input_folder, f) for f in os.listdir(input_folder)
                 if re.search(pattern_nir, f)
             ]
             
-            pattern_red = r'-B04-'
+            pattern_red = r'-B04_'
             files_red = [
                 os.path.join(input_folder, f) for f in os.listdir(input_folder)
                 if re.search(pattern_red, f)
             ]
 
-            pattern_blue = r'-B02-'
+            pattern_blue = r'-B02_'
             files_blue = [
                 os.path.join(input_folder, f) for f in os.listdir(input_folder)
                 if re.search(pattern_blue, f)
@@ -161,13 +161,13 @@ def calculate_spectral_indices(input_folder: str, spectral_indices) -> str:
                 evi_calc(files_nir[i], files_red[i], files_blue[i])
         
         if spectral_indice == "EVI2":
-            pattern_nir = r'-B08-'
+            pattern_nir = r'-B08_'
             files_nir = [
                 os.path.join(input_folder, f) for f in os.listdir(input_folder)
                 if re.search(pattern_nir, f)
             ]
             
-            pattern_red = r'-B04-'
+            pattern_red = r'-B04_'
             files_red = [
                 os.path.join(input_folder, f) for f in os.listdir(input_folder)
                 if re.search(pattern_red, f)
@@ -177,13 +177,13 @@ def calculate_spectral_indices(input_folder: str, spectral_indices) -> str:
                 evi2_calc(files_nir[i], files_red[i])
         
         if spectral_indice == "SAVI":
-            pattern_nir = r'-B08-'
+            pattern_nir = r'-B08_'
             files_nir = [
                 os.path.join(input_folder, f) for f in os.listdir(input_folder)
                 if re.search(pattern_nir, f)
             ]
             
-            pattern_red = r'-B04-'
+            pattern_red = r'-B04_'
             files_red = [
                 os.path.join(input_folder, f) for f in os.listdir(input_folder)
                 if re.search(pattern_red, f)
@@ -193,13 +193,13 @@ def calculate_spectral_indices(input_folder: str, spectral_indices) -> str:
                 savi_calc(files_nir[i], files_red[i])
         
         if spectral_indice == "NDBI":
-            pattern_swir = r'-B11-'
+            pattern_swir = r'-B11_'
             files_swir = [
                 os.path.join(input_folder, f) for f in os.listdir(input_folder)
                 if re.search(pattern_swir, f)
             ]
             
-            pattern_nir = r'-B08-'
+            pattern_nir = r'-B08_'
             files_nir = [
                 os.path.join(input_folder, f) for f in os.listdir(input_folder)
                 if re.search(pattern_nir, f)
@@ -216,7 +216,7 @@ def calculate_spectral_indices(input_folder: str, spectral_indices) -> str:
                 if re.search(pattern_swir, f)
             ]
             
-            pattern_green = r'-B03-'
+            pattern_green = r'-B03_'
             files_green = [
                 os.path.join(input_folder, f) for f in os.listdir(input_folder)
                 if re.search(pattern_green, f)
