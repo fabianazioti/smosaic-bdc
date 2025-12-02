@@ -2,6 +2,10 @@ import os
 import re
 import subprocess
 
+def fix_sentinel_negatives(input_file):
+    output = input_file.replace('.tif', '_FIXED.tif')
+    os.system(f'gdal_calc.py -A "{input_file}" --outfile="{output}" --calc="numpy.where(A < 0, 0, A)" --type=UInt16 --NoDataValue=0 --co COMPRESS=LZW --co PREDICTOR=2 --co TILED=YES')
+
 def ndvi_calc(nir, red, compress='LZW'):
     output_ndvi_file = nir.replace("-B08_", "-NDVI-")
     os.system(f'gdal_calc.py -A {nir} -B {red} --outfile={output_ndvi_file} --calc="where((A+B)==0,-9999,(A-B)/(A+B))" --type=Float32 --NoDataValue=-9999 --co COMPRESS={compress} --co BIGTIFF=IF_SAFER')
