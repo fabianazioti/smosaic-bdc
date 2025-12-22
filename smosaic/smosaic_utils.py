@@ -238,8 +238,7 @@ def clean_dir(data_dir, scene=None, date_list=None, date_interval=None):
         files_to_delete = [
             os.path.join(data_dir, f) 
             for f in os.listdir(data_dir)
-            if  f.startswith("band_non_") or f.startswith("merge_") or f.startswith("temp_") or f.startswith("provenance_") or f.startswith("clear_") or f.startswith("cloud_")
-            #if f.endswith(".tif") and not f.endswith("_COG.tif")
+            if f.endswith(".tif") and not f.endswith("_COG.tif")
         ]
 
         for f in files_to_delete:

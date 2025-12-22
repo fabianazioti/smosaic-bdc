@@ -107,7 +107,7 @@ def mosaic(name, data_dir, stac_url, collection, output_dir, start_year, start_m
     
     collection_name = dict_collection['collection']
 
-    #collection_get_data(stac, dict_collection, data_dir=data_dir)
+    collection_get_data(stac, dict_collection, data_dir=data_dir)
 
     num_processes = multiprocessing.cpu_count()
 
@@ -122,7 +122,8 @@ def mosaic(name, data_dir, stac_url, collection, output_dir, start_year, start_m
     with multiprocessing.Pool(processes=num_processes) as pool:
         results = pool.starmap(process_period, args_for_processes)
 
-    #calculate_spectral_indices(input_folder=output_dir,spectral_indices=spectral_indices)
+    if(len(spectral_indices)):
+        calculate_spectral_indices(input_folder=output_dir,spectral_indices=spectral_indices)
 
     clean_dir(data_dir)
     clean_dir(output_dir)
@@ -254,21 +255,21 @@ def process_period(period, mosaic_method, data_dir, collection_name, bands, bbox
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
         
-        collection_prefix = collection_name.split("-")[0].lower()
-        name_lower = name.lower()
+        collection_prefix = collection_name.split("-")[0].upper()
+        name_upper = name.upper()
         date_range = f"{str(start_date).replace('-', '')}_{str(end_date).replace('-', '')}"
         current_band = bands[i]
 
         if duration_months:
-            duration_str = f"-{duration_months}m"
+            duration_str = f"-{duration_months}M"
         elif duration_days:
-            duration_str = f"-{duration_days}d"
+            duration_str = f"-{duration_days}D"
         else:
             duration_str = ""
 
-        file_name = f"mosaic-{collection_prefix}-{name_lower}{duration_str}-{current_band}_{date_range}"
-        cloud_file_name = f"mosaic-{collection_prefix}-{name_lower}{duration_str}_{cloud}_{date_range}"
-        provenance_file_name = f"mosaic-{collection_prefix}-{name_lower}{duration_str}-PROVENANCE_{date_range}"
+        file_name = f"{collection_prefix}-{name_upper}{duration_str}-{current_band}_{date_range}"
+        cloud_file_name = f"{collection_prefix}-{name_upper}{duration_str}_{cloud}_{date_range}"
+        provenance_file_name = f"{collection_prefix}-{name_upper}{duration_str}-PROVENANCE_{date_range}"
 
         output_file = os.path.join(output_dir, f"raw-{file_name}.tif")
 
